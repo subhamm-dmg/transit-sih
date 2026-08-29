@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Data/model artifacts
+data/raw/
+data/private/
+*.pkl
+*.joblib
+*.onnx
+
+# Logs
+*.log
+
+# Secrets
+.env.*
+!.env.example
