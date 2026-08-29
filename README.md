@@ -32,17 +32,6 @@ Data Sources → Data Processing → ML Prediction → Route Scoring → User & 
 - `frontend/<name>` — UI
 - `backend/<name>` — APIs/integration
 
-## 24-Hour Hackathon Rule
-Repository created after **29 Aug, 9 PM**.
-**No pushes after 30 Aug, 9 PM.**
-Any authorized late push must follow the organizers' rules.
 
 ## Setup
 Add project-specific setup instructions here as the stack is finalized.
-
-## Data
-Do not commit API keys, credentials, private datasets, or sensitive personal data.
-Record data sources and licenses in `docs/data-sources.md`.
-
-## Evaluation
-Report actual validation metrics. Do not claim 90–95% accuracy unless supported by measured results.
