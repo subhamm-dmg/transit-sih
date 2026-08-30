@@ -7,6 +7,8 @@ and a score, so /api/routes and /api/recommend both build results the
 same way instead of duplicating logic in the route handlers.
 """
 
+from __future__ import annotations
+
 from app.models.schemas import CrowdLevel, RecommendationMetadata, RouteOption
 from app.services import scoring_service
 from app.services.prediction_service import PREDICTION_MODE, PredictionService

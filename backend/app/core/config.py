@@ -6,6 +6,8 @@ secrets. Every value has a safe default so the app runs fully offline
 without a .env file.
 """
 
+from __future__ import annotations
+
 import os
 from functools import lru_cache
 
@@ -28,7 +30,7 @@ class Settings:
     # CORS - local frontend dev servers
     CORS_ORIGINS: list[str] = os.getenv(
         "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost:5173",
+        "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173",
     ).split(",")
 
     # Feature flags for swapping mock adapters -> real integrations later.
@@ -38,11 +40,11 @@ class Settings:
     TRAFFIC_MODE: str = os.getenv("TRAFFIC_MODE", "mock")
     WEATHER_MODE: str = os.getenv("WEATHER_MODE", "mock")
 
-    # Placeholders for tomorrow's real integrations. Never hardcode keys;
-    # these just read from env and stay unset (None) tonight.
-    WEATHER_API_KEY: str | None = os.getenv("WEATHER_API_KEY")
-    TRAFFIC_API_KEY: str | None = os.getenv("TRAFFIC_API_KEY")
-    GTFS_DATA_PATH: str | None = os.getenv("GTFS_DATA_PATH")
+    from typing import Optional
+
+    WEATHER_API_KEY: Optional[str] = os.getenv("WEATHER_API_KEY")
+    TRAFFIC_API_KEY: Optional[str] = os.getenv("TRAFFIC_API_KEY")
+    GTFS_DATA_PATH: Optional[str] = os.getenv("GTFS_DATA_PATH")
 
 
 @lru_cache

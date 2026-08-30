@@ -14,7 +14,10 @@ import {
   MapPin,
   Circle,
   Radio,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
+import Map from "./components/Map";
 
 /* ------------------------------------------------------------------ */
 /*  DESIGN TOKENS                                                      */
@@ -42,21 +45,118 @@ const CROWD_COLOR = { low: C.teal, medium: C.amber, high: C.coral };
 const CROWD_LABEL = { low: "Light crowd", medium: "Moderate crowd", high: "Heavy crowd" };
 
 /* ------------------------------------------------------------------ */
+/* API CONNECTION                                                     */
+/* ------------------------------------------------------------------ */
+
+const API_ENDPOINTS = [
+  "/api/recommend",
+  "http://127.0.0.1:8000/api/recommend",
+  "http://localhost:8000/api/recommend",
+];
+
+const crowdToNumber = {
+  LOW: 1,
+  MODERATE: 2,
+  HIGH: 3,
+  VERY_HIGH: 3,
+};
+
+function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
+  const now = new Date();
+  const arrival = new Date(now.getTime() + apiRoute.eta_minutes * 60_000);
+
+  return {
+    key,
+    label,
+    accent,
+    accentSoft,
+    Icon,
+    mins: apiRoute.eta_minutes,
+    arrive: arrival.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    transfers: apiRoute.transfers,
+    crowdScore: crowdToNumber[apiRoute.crowd_level] ?? 2,
+    fare: "—",
+    reason: apiRoute.reason,
+    delayMinutes: apiRoute.delay_minutes,
+    reliability: apiRoute.reliability,
+    crowdLevel: apiRoute.crowd_level,
+    crowdConfidence: apiRoute.crowd_confidence,
+    legs: [
+      {
+        type: apiRoute.route_name.toLowerCase().includes("metro")
+          ? "metro"
+          : "bus",
+        route: apiRoute.route_name,
+        label: apiRoute.route_name,
+        mins: apiRoute.eta_minutes,
+        stops: 4,
+        crowd: (apiRoute.crowd_level ?? "MODERATE").toLowerCase()
+          .replace("very_high", "high")
+          .replace("moderate", "medium"),
+      },
+    ],
+  };
+}
+
+function adaptApiResponse(data) {
+  const allRoutes = [data.recommended_route, ...data.alternatives];
+
+  const fastest = [...allRoutes].sort(
+    (a, b) => a.eta_minutes - b.eta_minutes
+  )[0];
+
+  const leastCrowded = [...allRoutes].sort(
+    (a, b) => a.crowd_score - b.crowd_score
+  )[0];
+
+  return {
+    quickest: toUiRoute(
+      fastest,
+      "quickest",
+      "Quickest",
+      C.amber,
+      C.amberSoft,
+      Zap
+    ),
+    calm: toUiRoute(
+      leastCrowded,
+      "calm",
+      "Least Crowded",
+      C.teal,
+      C.tealSoft,
+      Users
+    ),
+    optimum: toUiRoute(
+      data.recommended_route,
+      "optimum",
+      "Recommended",
+      C.violet,
+      C.violetSoft,
+      Sparkles
+    ),
+    metadata: data.metadata,
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /*  MOCK DATA GENERATION                                               */
 /* ------------------------------------------------------------------ */
 const STOPS = [
-  "Mangaluru Central",
-  "Hampankatta",
-  "Pumpwell Circle",
-  "Kadri Temple",
-  "Kankanady",
-  "Bejai",
-  "State Bank",
-  "Surathkal",
-  "NITK Campus",
-  "Panambur Beach",
-  "Urwa Store",
-  "Lalbagh",
+  "Connaught Place",
+  "India Gate",
+  "Kashmere Gate",
+  "New Delhi Railway Station",
+  "Rajiv Chowk",
+  "AIIMS",
+  "Lajpat Nagar",
+  "Saket",
+  "Dwarka Sector 21",
+  "Hauz Khas",
+  "Karol Bagh",
+  "Noida Sector 18",
 ];
 
 function seededRandom(seed) {
@@ -141,12 +241,28 @@ function buildRoutes(from, to) {
 /* ------------------------------------------------------------------ */
 function LiveBadge() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.textDim, fontFamily: "'IBM Plex Mono', monospace", fontSize: 11, letterSpacing: 0.4 }}>
-      <span style={{ position: "relative", width: 7, height: 7, display: "inline-block" }}>
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        color: C.teal,
+        background: "rgba(70,217,197,0.12)",
+        border: "1px solid rgba(70,217,197,0.32)",
+        padding: "4px 10px",
+        borderRadius: 16,
+        fontFamily: "'IBM Plex Mono', monospace",
+        fontSize: 10.5,
+        fontWeight: 600,
+        letterSpacing: 0.5,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span style={{ position: "relative", width: 7, height: 7, display: "inline-block", flexShrink: 0 }}>
         <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: C.teal, animation: "pulseRing 1.8s ease-out infinite" }} />
         <span style={{ position: "absolute", inset: 0, borderRadius: "50%", background: C.teal }} />
       </span>
-      LIVE MODEL
+      PROTOTYPE PREDICTION
     </div>
   );
 }
@@ -291,9 +407,21 @@ function MapArt({ hasDestination }) {
 /* ------------------------------------------------------------------ */
 /*  PLAN SCREEN                                                        */
 /* ------------------------------------------------------------------ */
-function PlanScreen({ from, to, setFrom, setTo, onFindRoutes }) {
+function PlanScreen({
+  from,
+  to,
+  setFrom,
+  setTo,
+  onFindRoutes,
+  loading,
+  error,
+  isMapExpanded,
+  setIsMapExpanded,
+}) {
   const [activeField, setActiveField] = useState(null); // 'from' | 'to' | null
-  const [recents] = useState(["NITK Campus", "Mangaluru Central", "Hampankatta"]);
+  const [recents] = useState(["Connaught Place", "India Gate", "Kashmere Gate", "Hauz Khas", "AIIMS"]);
+  const originInputRef = useRef(null);
+  const destinationInputRef = useRef(null);
 
   const suggestions = useMemo(() => {
     const q = (activeField === "from" ? from : to).toLowerCase();
@@ -306,50 +434,120 @@ function PlanScreen({ from, to, setFrom, setTo, onFindRoutes }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div style={{ height: 210, position: "relative" }}>
-        <MapArt hasDestination={!!to} />
-        <div style={{ position: "absolute", top: 14, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: C.text, letterSpacing: 0.3 }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", position: "relative", overflow: "hidden" }}>
+      {/* Map Container */}
+      <div
+        style={{
+          height: isMapExpanded ? "100%" : 210,
+          position: isMapExpanded ? "absolute" : "relative",
+          inset: isMapExpanded ? 0 : undefined,
+          transition: "all 0.35s cubic-bezier(0.4, 0, 0.2, 1)",
+          zIndex: 1,
+        }}
+      >
+        <Map
+          origin={from}
+          destination={to}
+          originInputRef={originInputRef}
+          destinationInputRef={destinationInputRef}
+          onOriginSelected={setFrom}
+          onDestinationSelected={setTo}
+          isExpanded={isMapExpanded}
+        />
+        
+        {/* Top Header Bar */}
+        <div style={{ position: "absolute", top: 14, left: 16, right: 16, display: "flex", justifyContent: "space-between", alignItems: "center", zIndex: 10 }}>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 18, color: C.text, letterSpacing: 0.3, background: "rgba(16,18,26,0.75)", padding: "4px 10px", borderRadius: 8, backdropFilter: "blur(8px)" }}>
             transit<span style={{ color: C.amber }}>·</span>
           </div>
-          <LiveBadge />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => setIsMapExpanded(!isMapExpanded)}
+              title={isMapExpanded ? "Collapse map" : "Expand full map"}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 5,
+                padding: "6px 10px",
+                borderRadius: 20,
+                background: isMapExpanded ? C.amber : "rgba(27,30,41,0.85)",
+                color: isMapExpanded ? "#10121A" : C.text,
+                border: `1px solid ${isMapExpanded ? C.amber : C.line}`,
+                fontFamily: "'Space Grotesk', sans-serif",
+                fontSize: 11.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                backdropFilter: "blur(8px)",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+              }}
+            >
+              {isMapExpanded ? (
+                <>
+                  <Minimize2 size={13} /> Close Map
+                </>
+              ) : (
+                <>
+                  <Maximize2 size={13} /> Expand Map
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Inputs Bottom Sheet / Floating Panel */}
       <div
         style={{
-          background: C.surface,
+          background: isMapExpanded ? "rgba(27,30,41,0.92)" : C.surface,
+          backdropFilter: isMapExpanded ? "blur(14px)" : "none",
           borderTopLeftRadius: 22,
           borderTopRightRadius: 22,
-          marginTop: -18,
-          padding: "20px 18px 18px",
-          flex: 1,
-          boxShadow: "0 -14px 30px rgba(0,0,0,0.35)",
-          position: "relative",
-          zIndex: 2,
+          marginTop: isMapExpanded ? 0 : -18,
+          position: isMapExpanded ? "absolute" : "relative",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          maxHeight: isMapExpanded ? "70%" : "none",
+          padding: "18px 18px 16px",
+          flex: isMapExpanded ? undefined : 1,
+          boxShadow: "0 -14px 30px rgba(0,0,0,0.45)",
+          zIndex: 5,
+          display: "flex",
+          flexDirection: "column",
+          transition: "all 0.35s ease",
+          overflowY: "auto",
         }}
       >
-        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: C.text, marginBottom: 14, fontWeight: 600 }}>
-          Where are you headed?
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 15, color: C.text, fontWeight: 600 }}>
+            Where are you headed in Delhi?
+          </div>
+          {isMapExpanded && (
+            <span style={{ fontSize: 11, color: C.amber, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 500 }}>
+              FULL MAP ACTIVE
+            </span>
+          )}
         </div>
 
         <div style={{ position: "relative" }}>
           <div style={{ display: "flex", flexDirection: "column", background: C.surface2, borderRadius: 14, border: `1px solid ${C.line}` }}>
             <FieldRow
               icon={<span style={{ width: 8, height: 8, borderRadius: "50%", background: C.amber, display: "inline-block" }} />}
-              placeholder="Current location"
+              placeholder="Current location (e.g. Connaught Place)"
               value={from}
               onChange={setFrom}
               onFocus={() => setActiveField("from")}
+              inputRef={originInputRef}
             />
             <div style={{ height: 1, background: C.line, marginLeft: 40 }} />
             <FieldRow
               icon={<span style={{ width: 8, height: 8, borderRadius: 2, background: C.violet, display: "inline-block" }} />}
-              placeholder="Search destination"
+              placeholder="Search destination (e.g. Hauz Khas)"
               value={to}
               onChange={setTo}
               onFocus={() => setActiveField("to")}
+              inputRef={destinationInputRef}
             />
           </div>
 
@@ -397,9 +595,9 @@ function PlanScreen({ from, to, setFrom, setTo, onFindRoutes }) {
         )}
 
         {!activeField && (
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 11, color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: 0.6, marginBottom: 8 }}>
-              RECENT
+              DELHI STOPS & RECENT
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {recents.map((r) => (
@@ -407,12 +605,12 @@ function PlanScreen({ from, to, setFrom, setTo, onFindRoutes }) {
                   key={r}
                   onClick={() => setTo(r)}
                   style={{
-                    padding: "7px 12px",
+                    padding: "6px 12px",
                     borderRadius: 20,
                     background: C.surface2,
                     border: `1px solid ${C.line}`,
                     color: C.textDim,
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontFamily: "'Inter', sans-serif",
                     cursor: "pointer",
                   }}
@@ -424,15 +622,13 @@ function PlanScreen({ from, to, setFrom, setTo, onFindRoutes }) {
           </div>
         )}
 
-        <div style={{ flex: 1 }} />
-
         <button
           onClick={onFindRoutes}
-          disabled={!from || !to}
+          disabled={!from || !to || loading}
           style={{
-            marginTop: 22,
+            marginTop: 18,
             width: "100%",
-            padding: "15px 0",
+            padding: "14px 0",
             borderRadius: 14,
             border: "none",
             background: from && to ? C.amber : C.surface2,
@@ -440,23 +636,28 @@ function PlanScreen({ from, to, setFrom, setTo, onFindRoutes }) {
             fontFamily: "'Space Grotesk', sans-serif",
             fontWeight: 700,
             fontSize: 15,
-            letterSpacing: 0.3,
-            cursor: from && to ? "pointer" : "not-allowed",
-            transition: "background 0.2s ease",
+            cursor: from && to && !loading ? "pointer" : "not-allowed",
+            boxShadow: from && to ? "0 4px 14px rgba(255,176,32,0.3)" : "none",
           }}
         >
-          Find routes
+          {loading ? "Finding Delhi routes…" : "Find routes"}
         </button>
+        {error && (
+          <p style={{ color: C.coral, fontSize: 12, marginTop: 8, textAlign: "center" }}>
+            {error}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-function FieldRow({ icon, placeholder, value, onChange, onFocus }) {
+function FieldRow({ icon, placeholder, value, onChange, onFocus, inputRef }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "13px 14px" }}>
       <div style={{ width: 20, display: "flex", justifyContent: "center" }}>{icon}</div>
       <input
+        ref={inputRef}
         value={value}
         onFocus={onFocus}
         onChange={(e) => onChange(e.target.value)}
@@ -546,9 +747,22 @@ function ResultsScreen({ from, to, routes, onBack, onSelect }) {
         <RouteCard route={routes.optimum} onSelect={() => onSelect("optimum")} />
         <RouteCard route={routes.quickest} onSelect={() => onSelect("quickest")} />
         <RouteCard route={routes.calm} onSelect={() => onSelect("calm")} />
-        <div style={{ fontSize: 11, color: C.textFaint, fontFamily: "'Inter', sans-serif", textAlign: "center", padding: "6px 20px 4px", lineHeight: 1.5 }}>
-          Crowd levels are predicted from live GTFS feeds and historical ridership \u2014 updated every few minutes.
-        </div>
+        <div
+  style={{
+    fontSize: 11,
+    color: C.textFaint,
+    fontFamily: "'Inter', sans-serif",
+    textAlign: "center",
+    padding: "6px 20px 4px",
+    lineHeight: 1.5,
+  }}
+>
+  {routes.metadata?.prediction_mode === "mock"
+    ? "Prototype prediction based on simulated inputs."
+    : `Prediction confidence: ${Math.round(
+        (routes.metadata?.confidence ?? 0) * 100
+      )}%`}
+</div>
       </div>
     </div>
   );
@@ -677,17 +891,20 @@ function DetailScreen({ routes, activeKey, setActiveKey, onBack, from, to }) {
 
 function TopBar({ onBack, title, subtitle, accent }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 16px 12px", borderBottom: `1px solid ${C.line}` }}>
-      <button
-        onClick={onBack}
-        style={{ width: 32, height: 32, borderRadius: "50%", background: C.surface2, border: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
-      >
-        <ChevronLeft size={16} color={C.textDim} />
-      </button>
-      <div>
-        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15, color: accent || C.text }}>{title}</div>
-        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: C.textFaint, marginTop: 1 }}>{subtitle}</div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "14px 16px 12px", borderBottom: `1px solid ${C.line}` }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <button
+          onClick={onBack}
+          style={{ width: 32, height: 32, borderRadius: "50%", background: C.surface2, border: `1px solid ${C.line}`, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}
+        >
+          <ChevronLeft size={16} color={C.textDim} />
+        </button>
+        <div>
+          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 15, color: accent || C.text }}>{title}</div>
+          <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 11.5, color: C.textFaint, marginTop: 1 }}>{subtitle}</div>
+        </div>
       </div>
+      <LiveBadge />
     </div>
   );
 }
@@ -697,14 +914,65 @@ function TopBar({ onBack, title, subtitle, accent }) {
 /* ------------------------------------------------------------------ */
 export default function TransitApp() {
   const [screen, setScreen] = useState("plan"); // plan | results | detail
-  const [from, setFrom] = useState("Current location");
+  const [from, setFrom] = useState("Connaught Place");
   const [to, setTo] = useState("");
   const [routes, setRoutes] = useState(null);
   const [activeKey, setActiveKey] = useState("optimum");
+  const [isMapExpanded, setIsMapExpanded] = useState(false);
 
-  const handleFindRoutes = () => {
-    setRoutes(buildRoutes(from, to));
-    setScreen("results");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleFindRoutes = async () => {
+    if (!from.trim() || !to.trim()) {
+      setError("Enter both your starting point and destination.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    const payload = JSON.stringify({
+      from: from.trim(),
+      to: to.trim(),
+      departure_time: new Date().toTimeString().slice(0, 5),
+    });
+
+    let successData = null;
+    let lastError = null;
+
+    for (const endpoint of API_ENDPOINTS) {
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || "Could not find routes.");
+        }
+
+        successData = data;
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (successData) {
+      setRoutes(adaptApiResponse(successData));
+      setActiveKey("optimum");
+      setIsMapExpanded(false);
+      setScreen("results");
+    } else {
+      setError(
+        lastError?.message ||
+          "Backend is unreachable. Start FastAPI server with: uvicorn app.main:app --reload --port 8000"
+      );
+    }
+    setLoading(false);
   };
 
   return (
@@ -748,7 +1016,17 @@ export default function TransitApp() {
 
       <div key={screen} style={{ flex: 1, minHeight: 0, animation: "fadeSlide 0.35s ease" }}>
         {screen === "plan" && (
-          <PlanScreen from={from} to={to} setFrom={setFrom} setTo={setTo} onFindRoutes={handleFindRoutes} />
+          <PlanScreen
+            from={from}
+            to={to}
+            setFrom={setFrom}
+            setTo={setTo}
+            onFindRoutes={handleFindRoutes}
+            loading={loading}
+            error={error}
+            isMapExpanded={isMapExpanded}
+            setIsMapExpanded={setIsMapExpanded}
+          />
         )}
         {screen === "results" && routes && (
           <ResultsScreen

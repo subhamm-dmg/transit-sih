@@ -1,13 +1,15 @@
 # Transit SIH — Backend (MVP)
 
 FastAPI backend for the Transit SIH hackathon project. Runs **fully
-offline** tonight using deterministic mock adapters for routing,
+offline** using deterministic mock adapters for routing,
 predictions, traffic, and weather — no database, no API keys, no
 internet required.
 
 ## Setup
 
 ### 1. Create a virtual environment
+
+Python **3.10 or newer** is required.
 
 Windows:
 ```

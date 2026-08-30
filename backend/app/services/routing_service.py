@@ -12,6 +12,8 @@ Swap-out plan for tomorrow:
     them stable and the rest of the system won't need to change.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 
@@ -20,7 +22,7 @@ class MockLeg:
     """One leg of a candidate journey."""
 
     mode: str  # e.g. "BUS", "METRO"
-    line: str  # e.g. "500D", "Purple Line"
+    line: str  # e.g. "500D", "Yellow Line"
     travel_minutes: int
 
 
@@ -39,77 +41,85 @@ class CandidateRoute:
 # ---------------------------------------------------------------------------
 # Mock transit network
 # ---------------------------------------------------------------------------
-# A handful of well-known Bengaluru-ish stop names so demo output looks
-# sensible. Purely illustrative — replace with real GTFS stops tomorrow.
+# Well-known Delhi transit stop names for realistic local routes.
 
 _MOCK_STOPS: set[str] = {
-    "majestic",
-    "indiranagar",
-    "koramangala",
-    "whitefield",
-    "electronic city",
-    "mg road",
-    "silk board",
-    "hebbal",
-    "yeshwanthpur",
-    "btm layout",
+    "connaught place",
+    "india gate",
+    "kashmere gate",
+    "new delhi railway station",
+    "rajiv chowk",
+    "aiims",
+    "lajpat nagar",
+    "saket",
+    "dwarka sector 21",
+    "hauz khas",
+    "karol bagh",
+    "noida sector 18",
 }
 
 # Candidate routes are keyed by a normalized (from, to) pair.
-# Each entry is a list of CandidateRoute objects - the small "network".
 _MOCK_ROUTES: dict[tuple[str, str], list[CandidateRoute]] = {
-    ("majestic", "indiranagar"): [
+    ("connaught place", "hauz khas"): [
         CandidateRoute(
             route_id="R1",
-            route_name="Bus 500D",
-            legs=[MockLeg(mode="BUS", line="500D", travel_minutes=35)],
-            base_travel_minutes=35,
-            base_waiting_minutes=3,
+            route_name="Delhi Metro Yellow Line",
+            legs=[MockLeg(mode="METRO", line="Yellow Line", travel_minutes=18)],
+            base_travel_minutes=18,
+            base_waiting_minutes=2,
             transfers=0,
         ),
         CandidateRoute(
             route_id="R2",
-            route_name="Metro + Bus",
-            legs=[
-                MockLeg(mode="METRO", line="Purple Line", travel_minutes=22),
-                MockLeg(mode="BUS", line="201", travel_minutes=14),
-            ],
-            base_travel_minutes=36,
-            base_waiting_minutes=5,
-            transfers=1,
+            route_name="DTC Bus 534 Direct",
+            legs=[MockLeg(mode="BUS", line="534", travel_minutes=28)],
+            base_travel_minutes=28,
+            base_waiting_minutes=4,
+            transfers=0,
         ),
         CandidateRoute(
             route_id="R3",
-            route_name="Metro + Walk",
-            legs=[MockLeg(mode="METRO", line="Purple Line", travel_minutes=25)],
-            base_travel_minutes=25,
-            base_waiting_minutes=6,
-            transfers=0,
+            route_name="Metro Violet + Yellow Line",
+            legs=[
+                MockLeg(mode="METRO", line="Violet Line", travel_minutes=12),
+                MockLeg(mode="METRO", line="Yellow Line", travel_minutes=10),
+            ],
+            base_travel_minutes=22,
+            base_waiting_minutes=4,
+            transfers=1,
         ),
     ],
 }
 
 # Generic fallback network used for any (from, to) pair not explicitly
-# defined above, so the demo never dead-ends on an unknown stop pair.
+# defined above, so any Delhi location query works dynamically.
 _FALLBACK_ROUTES: list[CandidateRoute] = [
     CandidateRoute(
         route_id="R1",
-        route_name="Direct Bus",
-        legs=[MockLeg(mode="BUS", line="Express", travel_minutes=40)],
-        base_travel_minutes=40,
-        base_waiting_minutes=4,
+        route_name="Delhi Metro Express",
+        legs=[MockLeg(mode="METRO", line="Yellow Line", travel_minutes=22)],
+        base_travel_minutes=22,
+        base_waiting_minutes=3,
         transfers=0,
     ),
     CandidateRoute(
         route_id="R2",
-        route_name="Metro + Bus",
+        route_name="DTC Bus + Metro Feeder",
         legs=[
-            MockLeg(mode="METRO", line="Green Line", travel_minutes=20),
-            MockLeg(mode="BUS", line="Feeder", travel_minutes=15),
+            MockLeg(mode="BUS", line="419", travel_minutes=16),
+            MockLeg(mode="METRO", line="Magenta Line", travel_minutes=14),
         ],
-        base_travel_minutes=35,
-        base_waiting_minutes=6,
+        base_travel_minutes=30,
+        base_waiting_minutes=5,
         transfers=1,
+    ),
+    CandidateRoute(
+        route_id="R3",
+        route_name="Direct DTC AC Bus",
+        legs=[MockLeg(mode="BUS", line="781", travel_minutes=35)],
+        base_travel_minutes=35,
+        base_waiting_minutes=4,
+        transfers=0,
     ),
 ]
 

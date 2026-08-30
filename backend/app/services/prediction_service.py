@@ -12,6 +12,8 @@ Swap-out plan for tomorrow:
     API layer don't need to change.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
 

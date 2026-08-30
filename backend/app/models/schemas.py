@@ -6,7 +6,11 @@ services can be swapped out tomorrow (mock -> GTFS/ML) without touching
 the API contract.
 """
 
+from __future__ import annotations
+
 from enum import Enum
+
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -61,7 +65,7 @@ class RouteOption(BaseModel):
     reliability: float = Field(..., ge=0.0, le=1.0)
     transfers: int
     reason: str
-    score: float | None = Field(
+    score: Optional[float] = Field(
         default=None,
         description="Internal scoring value used for ranking (lower is better).",
     )
