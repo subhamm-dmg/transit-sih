@@ -6,3 +6,10 @@ pandas>=2.2
 numpy>=1.26
 pytest>=8.0
 python-dotenv>=1.0
+
+# Crowd prediction model. Pinned to the exact version crowd_model.pkl was
+# trained with (verified in ml/README.md) - a newer sklearn loads it but
+# prints an InconsistentVersionWarning and isn't guaranteed to predict
+# identically. Retrain and bump this pin together if you need to upgrade.
+scikit-learn==1.7.2
+joblib>=1.3

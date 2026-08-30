@@ -23,6 +23,9 @@ data/private/
 *.pkl
 *.joblib
 *.onnx
+# Exception: this one is a required runtime artifact, not a generated
+# scratch file - PredictionService loads it directly, see ml/README.md.
+!backend/app/ml/artifacts/crowd_model.pkl
 
 # Logs
 *.log

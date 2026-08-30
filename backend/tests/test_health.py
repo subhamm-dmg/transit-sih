@@ -38,7 +38,9 @@ def test_recommend_success() -> None:
     assert recommended["crowd_level"] in ("LOW", "MODERATE", "HIGH", "VERY_HIGH")
     assert 0.0 <= recommended["reliability"] <= 1.0
 
-    assert body["metadata"]["prediction_mode"] == "mock"
+    # "hybrid": crowding now runs on the real ML model, ETA/delay are still
+    # mock - see backend/app/services/prediction_service.py module docstring.
+    assert body["metadata"]["prediction_mode"] == "hybrid"
 
 
 def test_recommend_unknown_stop_pair_falls_back() -> None:
