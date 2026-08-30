@@ -1,24 +1,28 @@
 """
-RecommendationService — orchestrates RoutingService + PredictionService +
-scoring to build the final ranked list of RouteOption objects.
+backend/app/services/recommendation_service.py — Orchestrates Routing, ML Prediction, and Scoring.
 
-This is the single place that composes candidate routes with predictions
-and a score, so /api/routes and /api/recommend both build results the
-same way instead of duplicating logic in the route handlers.
+Receives commuter query (from, to, departure_time), finds candidate routes,
+runs ML models for ETA / delay / crowding, computes multi-objective ranking, and formats response.
 """
 
-from app.models.schemas import CrowdLevel, RecommendationMetadata, RouteOption
+from typing import Optional
+from app.models.schemas import (
+    CrowdLevel,
+    JourneyLegSchema,
+    RecommendationMetadata,
+    RouteOption,
+)
 from app.services import scoring_service
 from app.services.prediction_service import PREDICTION_MODE, PredictionService
-from app.services.routing_service import RouteNotFoundError, RoutingService
+from app.services.routing_service import CandidateRoute, RouteNotFoundError, RoutingService
 
 
 class RecommendationService:
     def __init__(
         self,
-        routing_service: RoutingService | None = None,
-        prediction_service: PredictionService | None = None,
-    ) -> None:
+        routing_service: Optional[RoutingService] = None,
+        prediction_service: Optional[PredictionService] = None,
+    ):
         self.routing_service = routing_service or RoutingService()
         self.prediction_service = prediction_service or PredictionService()
 
@@ -26,65 +30,103 @@ class RecommendationService:
         self, origin: str, destination: str, departure_time: str
     ) -> tuple[list[RouteOption], RecommendationMetadata]:
         """
-        Return (routes, metadata), routes sorted best-first (lowest score).
-
-        Raises RouteNotFoundError if no candidate routes exist for the pair.
+        Builds and ranks candidate routes based on ML predictions.
         """
         candidates = self.routing_service.get_candidate_routes(origin, destination)
         if not candidates:
             raise RouteNotFoundError(f"No routes found from '{origin}' to '{destination}'")
 
         options: list[RouteOption] = []
-        for candidate in candidates:
-            eta = self.prediction_service.predict_eta(
-                candidate.base_travel_minutes, candidate.route_id, departure_time
+        weather_cond = "CLEAR"
+        traffic_lvl = "NORMAL"
+        avg_confidence = 0.88
+
+        for idx, candidate in enumerate(candidates):
+            # Run ML Prediction
+            pred = self.prediction_service.predict_journey(
+                base_travel_minutes=candidate.base_travel_minutes,
+                distance_km=candidate.distance_km,
+                num_stops=sum(leg.num_stops for leg in candidate.legs),
+                mode_bus_ratio=candidate.mode_bus_ratio,
+                transfers=candidate.transfers,
+                departure_time=departure_time,
+                location=origin,
             )
-            delay = self.prediction_service.predict_delay(candidate.route_id, departure_time)
-            crowding = self.prediction_service.predict_crowding(
-                candidate.route_id, departure_time, candidate.transfers
+
+            weather_cond = pred.weather_condition
+            traffic_lvl = pred.traffic_level
+            avg_confidence = pred.confidence
+
+            reliability = scoring_service.compute_reliability(
+                delay_minutes=pred.delay_minutes,
+                transfers=candidate.transfers,
+                mode_bus_ratio=candidate.mode_bus_ratio,
             )
-            reliability = scoring_service.compute_reliability(delay, candidate.transfers)
+
             score = scoring_service.score_route(
-                eta_minutes=eta,
+                eta_minutes=pred.eta_minutes,
                 waiting_minutes=candidate.base_waiting_minutes,
-                delay_minutes=delay,
-                crowd_score=crowding.crowd_score,
+                delay_minutes=pred.delay_minutes,
+                crowd_score=pred.crowd_score,
                 transfers=candidate.transfers,
                 reliability=reliability,
             )
+
+            legs_schema = [
+                JourneyLegSchema(
+                    mode=leg.mode,
+                    line=leg.line,
+                    from_stop=leg.from_stop,
+                    to_stop=leg.to_stop,
+                    travel_minutes=leg.travel_minutes,
+                    num_stops=leg.num_stops,
+                    crowd_estimate=pred.crowd_level.value if leg.mode != "WALK" else "LOW",
+                    fare=leg.fare,
+                )
+                for leg in candidate.legs
+            ]
 
             options.append(
                 RouteOption(
                     route_id=candidate.route_id,
                     route_name=candidate.route_name,
-                    eta_minutes=eta,
+                    route_type=candidate.route_type,
+                    eta_minutes=pred.eta_minutes,
                     waiting_minutes=candidate.base_waiting_minutes,
-                    delay_minutes=delay,
-                    crowd_level=CrowdLevel(crowding.crowd_level.value),
-                    crowd_score=crowding.crowd_score,
+                    delay_minutes=pred.delay_minutes,
+                    delay_risk=pred.delay_risk,
+                    delay_probability=pred.delay_probability,
+                    crowd_level=CrowdLevel(pred.crowd_level.value),
+                    crowd_score=pred.crowd_score,
                     reliability=reliability,
                     transfers=candidate.transfers,
-                    reason="",  # filled in below once ranking is known
+                    distance_km=candidate.distance_km,
+                    fare=candidate.fare,
+                    legs=legs_schema,
+                    reason="",
                     score=score,
                 )
             )
 
+        # Sort: lowest score (best composite recommendation) first
         options.sort(key=lambda opt: opt.score if opt.score is not None else float("inf"))
 
+        # Build explainable reasons
         for index, option in enumerate(options):
             option.reason = scoring_service.build_reason(
                 is_recommended=(index == 0),
+                route_type=option.route_type,
                 eta_minutes=option.eta_minutes,
                 crowd_level=option.crowd_level.value,
                 delay_minutes=option.delay_minutes,
+                transfers=option.transfers,
             )
 
         metadata = RecommendationMetadata(
             prediction_mode=PREDICTION_MODE,
-            data_source="mock",
-            confidence=0.75,
+            data_source="gtfs+ml-ensemble",
+            confidence=avg_confidence,
+            weather=weather_cond,
+            traffic=traffic_lvl,
         )
         return options, metadata
-
-
-__all__ = ["RecommendationService", "RouteNotFoundError"]

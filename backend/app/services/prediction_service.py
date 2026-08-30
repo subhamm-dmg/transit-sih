@@ -1,108 +1,90 @@
 """
-PredictionService — ETA, delay, and crowding predictions.
+backend/app/services/prediction_service.py — ML Prediction Service.
 
-Tonight these are DETERMINISTIC MOCK VALUES, not real ML output. Every
-result is tagged with prediction_mode="mock" so the API response never
-pretends to be a real prediction.
-
-Swap-out plan for tomorrow:
-    Replace the bodies of predict_eta / predict_delay / predict_crowding
-    with calls into the real ML models. Keep the method signatures and
-    the PredictionResult shape the same so RoutingService/scoring and the
-    API layer don't need to change.
+Integrates the trained Machine Learning inference engine with real-time weather
+and traffic telemetry to provide high-precision ETA, Delay, and Crowding predictions.
 """
 
+import sys
+from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
+
+# Ensure project root is on sys.path for ml imports
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from ml.inference import MLInferenceEngine, MLPredictionOutput, CrowdLevel, DelayRisk
+from app.services.weather_service import WeatherService, WeatherInfo
+from app.services.traffic_service import TrafficService, TrafficInfo
 
 
-class CrowdLevel(str, Enum):
-    LOW = "LOW"
-    MODERATE = "MODERATE"
-    HIGH = "HIGH"
-    VERY_HIGH = "VERY_HIGH"
+PREDICTION_MODE = "ml-production"
 
 
 @dataclass(frozen=True)
-class CrowdingPrediction:
+class PredictionResult:
+    eta_minutes: int
+    delay_minutes: int
+    delay_risk: str
+    delay_probability: float
+    crowd_score: int
     crowd_level: CrowdLevel
-    crowd_score: int  # 0-100
-
-
-PREDICTION_MODE = "mock"
+    confidence: float
+    weather_condition: str
+    traffic_level: str
 
 
 class PredictionService:
-    """Deterministic mock stand-in for the real ML prediction engine."""
+    """Production ML Prediction Service combining GTFS features, ML inference, and live telemetry."""
 
-    def predict_eta(
-        self, base_travel_minutes: int, route_id: str, departure_time: str
-    ) -> int:
+    def __init__(
+        self,
+        ml_engine: Optional[MLInferenceEngine] = None,
+        weather_service: Optional[WeatherService] = None,
+        traffic_service: Optional[TrafficService] = None,
+    ):
+        self.ml_engine = ml_engine or MLInferenceEngine.get_instance()
+        self.weather_service = weather_service or WeatherService()
+        self.traffic_service = traffic_service or TrafficService()
+
+    def predict_journey(
+        self,
+        base_travel_minutes: int,
+        distance_km: float = 12.0,
+        num_stops: int = 14,
+        mode_bus_ratio: float = 1.0,
+        transfers: int = 0,
+        departure_time: str = "09:00",
+        location: str = "Delhi",
+    ) -> PredictionResult:
         """
-        Predict ETA (minutes) for a candidate route.
-
-        Mock rule: base travel time + a small deterministic offset derived
-        from the route_id and departure hour, so results vary a bit
-        between routes/times without being random (keeps demo stable and
-        reproducible).
+        Executes end-to-end ML inference for a candidate journey.
         """
-        offset = self._deterministic_offset(route_id, departure_time, spread=4)
-        return max(1, base_travel_minutes + offset)
+        weather: WeatherInfo = self.weather_service.get_weather(location=location, departure_time=departure_time)
+        traffic: TrafficInfo = self.traffic_service.get_traffic_level(stop_or_area=location, departure_time=departure_time)
 
-    def predict_delay(self, route_id: str, departure_time: str) -> int:
-        """
-        Predict delay (minutes) for a candidate route.
+        ml_out: MLPredictionOutput = self.ml_engine.predict(
+            base_travel_minutes=base_travel_minutes,
+            distance_km=distance_km,
+            num_stops=num_stops,
+            mode_bus_ratio=mode_bus_ratio,
+            transfers=transfers,
+            departure_time=departure_time,
+            traffic_factor=traffic.congestion_factor,
+            rain_mm=weather.rain_mm,
+        )
 
-        Mock rule: deterministic 0-10 minute delay based on route_id and
-        departure hour. Routes with more legs/transfers tend to model
-        slightly higher delay risk upstream in the routing service, not
-        here - this stays a pure function of route_id/time.
-        """
-        return self._deterministic_offset(route_id, departure_time, spread=10, min_value=0)
-
-    def predict_crowding(
-        self, route_id: str, departure_time: str, transfers: int
-    ) -> CrowdingPrediction:
-        """
-        Predict crowding for a candidate route.
-
-        Mock rule: deterministic score 0-100 based on route_id, departure
-        hour (peak hours score higher), and transfers.
-        """
-        hour = self._parse_hour(departure_time)
-        peak_bonus = 25 if hour in (8, 9, 18, 19) else 0
-        base = self._deterministic_offset(route_id, departure_time, spread=60, min_value=10)
-        score = min(100, base + peak_bonus + transfers * 5)
-
-        if score < 30:
-            level = CrowdLevel.LOW
-        elif score < 55:
-            level = CrowdLevel.MODERATE
-        elif score < 80:
-            level = CrowdLevel.HIGH
-        else:
-            level = CrowdLevel.VERY_HIGH
-
-        return CrowdingPrediction(crowd_level=level, crowd_score=score)
-
-    # -- helpers -----------------------------------------------------------
-
-    @staticmethod
-    def _parse_hour(departure_time: str) -> int:
-        try:
-            return int(departure_time.split(":")[0])
-        except (ValueError, IndexError):
-            return 12
-
-    @staticmethod
-    def _deterministic_offset(
-        route_id: str, departure_time: str, spread: int, min_value: int = 0
-    ) -> int:
-        """
-        Small deterministic pseudo-random-looking number derived from
-        route_id + departure_time, bounded to [min_value, min_value+spread].
-        Same inputs always produce the same output (no real randomness).
-        """
-        seed_str = f"{route_id}-{departure_time}"
-        digest = sum(ord(c) for c in seed_str)
-        return min_value + (digest % (spread + 1))
+        return PredictionResult(
+            eta_minutes=ml_out.eta_minutes,
+            delay_minutes=ml_out.delay_minutes,
+            delay_risk=ml_out.delay_risk.value,
+            delay_probability=ml_out.delay_probability,
+            crowd_score=ml_out.crowd_score,
+            crowd_level=ml_out.crowd_level,
+            confidence=ml_out.confidence,
+            weather_condition=weather.condition.value,
+            traffic_level=traffic.level.value,
+        )
