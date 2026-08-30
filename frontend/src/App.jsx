@@ -171,32 +171,27 @@ function adaptApiResponse(data) {
     };
   }
 
-  // If multiple distinct routes exist:
-  // 1. Optimum: Best composite ML recommendation (minimizing generalized travel cost)
-  const optRoute = data.recommended_route || uniqueRoutes[0];
-
-  // 2. Quickest: Strictly the option with the minimum ETA
+  // Find the distinct roles among the candidates:
+  // 1. QUICKEST: Strictly the route with the minimum travel time (ETA)
   const sortedByEta = [...uniqueRoutes].sort((a, b) => (a.eta_minutes || 0) - (b.eta_minutes || 0));
-  const quickCandidate = sortedByEta[0];
-  const quickRoute = (quickCandidate && quickCandidate.eta_minutes < optRoute.eta_minutes)
-    ? quickCandidate
-    : sortedByEta.find(r => r !== optRoute) || null;
+  const quickestRoute = sortedByEta[0];
 
-  // 3. Calm / Least Crowded: Strictly the option with lowest crowd score / density
+  // 2. LEAST CROWDED (CALM): Strictly the route with the lowest crowding score / density
   const sortedByCrowd = [...uniqueRoutes].sort((a, b) => (a.crowd_score || 50) - (b.crowd_score || 50));
-  const calmCandidate = sortedByCrowd[0];
-  const calmRoute = (calmCandidate && calmCandidate !== optRoute && calmCandidate !== quickRoute)
-    ? calmCandidate
-    : sortedByCrowd.find(r => r !== optRoute && r !== quickRoute) || null;
+  const calmRoute = sortedByCrowd.find(r => r !== quickestRoute) || sortedByCrowd[0];
+
+  // 3. OPTIMUM: The balanced multi-modal / best composite route
+  const remaining = uniqueRoutes.filter(r => r !== quickestRoute && r !== calmRoute);
+  const optimumRoute = remaining[0] || (data.recommended_route !== quickestRoute ? data.recommended_route : uniqueRoutes.find(r => r.route_type === "OPTIMUM")) || uniqueRoutes[1] || uniqueRoutes[0];
 
   const routesList = [];
-  if (optRoute) {
-    routesList.push(toUiRoute(optRoute, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST PICK"));
+  if (optimumRoute && optimumRoute !== quickestRoute && optimumRoute !== calmRoute) {
+    routesList.push(toUiRoute(optimumRoute, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST BALANCED"));
   }
-  if (quickRoute && quickRoute !== optRoute) {
-    routesList.push(toUiRoute(quickRoute, "quickest", "QUICKEST", C.amber, C.amberSoft, Zap));
+  if (quickestRoute) {
+    routesList.push(toUiRoute(quickestRoute, "quickest", "QUICKEST", C.amber, C.amberSoft, Zap));
   }
-  if (calmRoute && calmRoute !== optRoute && calmRoute !== quickRoute) {
+  if (calmRoute && calmRoute !== quickestRoute && calmRoute !== optimumRoute) {
     routesList.push(toUiRoute(calmRoute, "calm", "LEAST CROWDED", C.teal, C.tealSoft, Users));
   }
 
