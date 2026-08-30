@@ -99,8 +99,8 @@ class GTFSService:
             feed_path = (
                 Path(__file__).resolve().parents[3]
                 / "data"
-                / "raw"
-                / "dtc_gtfs.zip"
+                / "processed"
+                / "dtc_gtfs"
             )
 
         self.feed_path = Path(feed_path)
@@ -136,18 +136,38 @@ class GTFSService:
     # ------------------------------------------------------------------
 
     def _load(self) -> None:
-        with ZipFile(self.feed_path, "r") as archive:
-            self._load_stops(archive)
-            self._load_routes(archive)
-            self._load_trips(archive)
-            self._load_stop_times(archive)
+        if self.feed_path.is_dir():
+            self._load_stops(self.feed_path)
+            self._load_routes(self.feed_path)
+            self._load_trips(self.feed_path)
+            self._load_stop_times(self.feed_path)
+            return
+
+        if self.feed_path.is_file() and self.feed_path.suffix.lower() == ".zip":
+            with ZipFile(self.feed_path, "r") as archive:
+                self._load_stops(archive)
+                self._load_routes(archive)
+                self._load_trips(archive)
+                self._load_stop_times(archive)
+            return
+
+        raise FileNotFoundError(
+            f"GTFS feed must be a directory or ZIP file: {self.feed_path}"
+        )
 
     @staticmethod
     def _read_csv(
-        archive: ZipFile,
+        source: Path | ZipFile,
         filename: str,
     ) -> Iterator[dict[str, str]]:
-        with archive.open(filename, "r") as raw:
+        if isinstance(source, ZipFile):
+            raw = source.open(filename, "r")
+            close_raw = True
+        else:
+            raw = source.joinpath(filename).open("rb")
+            close_raw = True
+
+        try:
             text = io.TextIOWrapper(
                 raw,
                 encoding="utf-8-sig",
@@ -161,9 +181,12 @@ class GTFSService:
                     str(key).strip(): (value or "").strip()
                     for key, value in row.items()
                 }
+        finally:
+            if close_raw:
+                raw.close()
 
-    def _load_stops(self, archive: ZipFile) -> None:
-        for row in self._read_csv(archive, "stops.txt"):
+    def _load_stops(self, source: Path | ZipFile) -> None:
+        for row in self._read_csv(source, "stops.txt"):
             try:
                 stop = GTFSStop(
                     stop_id=row["stop_id"],
@@ -176,8 +199,8 @@ class GTFSService:
 
             self._stops[stop.stop_id] = stop
 
-    def _load_routes(self, archive: ZipFile) -> None:
-        for row in self._read_csv(archive, "routes.txt"):
+    def _load_routes(self, source: Path | ZipFile) -> None:
+        for row in self._read_csv(source, "routes.txt"):
             try:
                 route = GTFSRoute(
                     route_id=row["route_id"],
@@ -190,8 +213,8 @@ class GTFSService:
 
             self._routes[route.route_id] = route
 
-    def _load_trips(self, archive: ZipFile) -> None:
-        for row in self._read_csv(archive, "trips.txt"):
+    def _load_trips(self, source: Path | ZipFile) -> None:
+        for row in self._read_csv(source, "trips.txt"):
             try:
                 trip = GTFSTrip(
                     trip_id=row["trip_id"],
@@ -204,8 +227,8 @@ class GTFSService:
             self._trips[trip.trip_id] = trip
             self._trip_route[trip.trip_id] = trip.route_id
 
-    def _load_stop_times(self, archive: ZipFile) -> None:
-        for row in self._read_csv(archive, "stop_times.txt"):
+    def _load_stop_times(self, source: Path | ZipFile) -> None:
+        for row in self._read_csv(source, "stop_times.txt"):
             try:
                 trip_id = row["trip_id"]
                 stop_id = row["stop_id"]
