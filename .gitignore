@@ -30,3 +30,4 @@ data/private/
 # Secrets
 .env.*
 !.env.example
+data/processed/dtc_gtfs/stop_times.txt
