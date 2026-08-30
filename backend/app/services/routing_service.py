@@ -176,15 +176,10 @@ class RoutingService:
             routes_by_type[r.route_type] = r
 
         # If a real GTFS direct route exists, blend it in
-        for r in direct_routes:
-            if r.route_type == "QUICKEST" or "QUICKEST" not in routes_by_type:
-                routes_by_type["QUICKEST"] = r
-            elif "CALM" not in routes_by_type:
-                routes_by_type["CALM"] = r
-
-        for r in transfer_routes:
-            if "OPTIMUM" not in routes_by_type:
-                routes_by_type["OPTIMUM"] = r
+        if direct_metro:
+            routes_by_type["QUICKEST"] = direct_metro
+        if direct_bus:
+            routes_by_type["CALM"] = direct_bus
 
         candidates = list(routes_by_type.values())
         if not candidates:
@@ -315,24 +310,8 @@ class RoutingService:
         routes_b = self.network.stop_to_routes.get(stop_b.stop_id, set())
         common_routes = [r for r in routes_a.intersection(routes_b) if "bus" in r]
 
-        for rid in list(common_routes)[:2]:
-            r_info = self.network.routes.get(rid)
-            if not r_info:
-                continue
-            seq = r_info.stops_sequence
-            try:
-                idx_a = seq.index(stop_a.stop_id)
-                idx_b = seq.index(stop_b.stop_id)
-                if idx_b <= idx_a:
-                    continue
-                num_stops = idx_b - idx_a
-            except ValueError:
-                num_stops = max(3, int(dist_km * 1.2))
-
-            is_metro = (r_info.mode == "METRO")
-            speed = 34.0 if is_metro else 18.0
-            travel_mins = max(10, int(round((dist_km / speed) * 60.0)) + int(num_stops * 1.5))
-            fare = calculate_metro_fare(dist_km) if is_metro else calculate_bus_fare(dist_km, is_ac=True)
+        if not common_routes:
+            return None
 
         rid = common_routes[0]
         r_info = self.network.routes.get(rid)
@@ -340,29 +319,31 @@ class RoutingService:
         if not bus_line or bus_line.startswith("bus_"):
             bus_line = "DTC Bus 502"
 
-            legs = [
-                JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=stop_a.stop_name, travel_minutes=4, num_stops=0, fare=0),
-                leg,
-                JourneyLeg(mode="WALK", line="Walk", from_stop=stop_b.stop_name, to_stop=dest_name, travel_minutes=3, num_stops=0, fare=0),
-            ]
-            total_fare = sum(l.fare for l in legs)
+        num_stops = max(4, int(round(dist_km * 1.6)))
+        bus_transit_mins = max(12, int(round((dist_km / 18.0) * 60.0)))
+        fare = calculate_bus_fare(dist_km, is_ac=True)
 
-            routes.append(
-                CandidateRoute(
-                    route_id=f"direct_{rid}",
-                    route_name=f"Direct {r_info.mode.title()} — {r_info.route_short_name}",
-                    route_type="QUICKEST" if is_metro else "CALM",
-                    legs=legs,
-                    base_travel_minutes=travel_mins + 7,
-                    base_waiting_minutes=4 if is_metro else 6,
-                    transfers=0,
-                    distance_km=dist_km,
-                    fare=total_fare,
-                    mode_bus_ratio=0.0 if is_metro else 1.0,
-                )
-            )
+        name_a = stop_a.stop_name if stop_a else orig_name
+        name_b = stop_b.stop_name if stop_b else dest_name
 
-        return routes
+        legs = [
+            JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=name_a, travel_minutes=2, num_stops=0, fare=0),
+            JourneyLeg(mode="BUS", line=bus_line, from_stop=name_a, to_stop=name_b, travel_minutes=bus_transit_mins, num_stops=num_stops, crowd_estimate="LOW", fare=fare),
+            JourneyLeg(mode="WALK", line="Walk", from_stop=name_b, to_stop=dest_name, travel_minutes=2, num_stops=0, fare=0),
+        ]
+
+        return CandidateRoute(
+            route_id=f"bus_{rid}",
+            route_name=f"Direct {bus_line}",
+            route_type="CALM",
+            legs=legs,
+            base_travel_minutes=bus_transit_mins + 4,
+            base_waiting_minutes=5,
+            transfers=0,
+            distance_km=dist_km,
+            fare=fare,
+            mode_bus_ratio=1.0,
+        )
 
     def _find_transfer_gtfs_routes(
         self, stop_a: Optional[Stop], stop_b: Optional[Stop], orig_name: str, dest_name: str, dist_km: float
