@@ -205,10 +205,18 @@ class GTFSNetwork:
         fallback_stops = [
             ("Kashmere Gate", 28.6678, 77.2280, "METRO"),
             ("Rajiv Chowk", 28.6328, 77.2195, "METRO"),
+            ("Connaught Place", 28.6315, 77.2167, "BUS"),
             ("Central Secretariat", 28.6145, 77.2119, "METRO"),
             ("Hauz Khas", 28.5432, 77.2064, "METRO"),
             ("Noida Sector 18", 28.5708, 77.3260, "METRO"),
             ("Inderlok", 28.6734, 77.1702, "METRO"),
+            ("GB Road", 28.6480, 77.2240, "BUS"),
+            ("Shradhanand Marg", 28.6480, 77.2240, "BUS"),
+            ("New Delhi Railway Station", 28.6429, 77.2191, "BUS"),
+            ("AIIMS", 28.5672, 77.2100, "METRO"),
+            ("Saket", 28.5204, 77.2014, "METRO"),
+            ("Karol Bagh", 28.6514, 77.1907, "METRO"),
+            ("India Gate", 28.6129, 77.2295, "BUS"),
             ("Majestic Terminal", 12.9767, 77.5713, "BUS"),
             ("Indiranagar", 12.9784, 77.6408, "BUS"),
             ("Koramangala", 12.9352, 77.6245, "BUS"),
@@ -222,6 +230,33 @@ class GTFSNetwork:
             self.stops[sid] = Stop(stop_id=sid, stop_name=name, lat=lat, lon=lon, mode=mode)
             self.name_to_stop_ids.setdefault(name.lower(), []).append(sid)
         self.all_stop_names = [s[0] for s in fallback_stops]
+
+        # Mock routes connecting key Delhi stops
+        mock_routes_def = [
+            ("DTC-410", "410", "Kashmere Gate - Connaught Place", "BUS", "#FFB020", ["Kashmere Gate", "GB Road", "New Delhi Railway Station", "Connaught Place"]),
+            ("DTC-6", "6", "Old Delhi - AIIMS via GB Road", "BUS", "#FFB020", ["Kashmere Gate", "GB Road", "Shradhanand Marg", "New Delhi Railway Station", "AIIMS"]),
+            ("DTC-14", "14", "Kashmere Gate - New Delhi RS - Rajiv Chowk", "BUS", "#FFB020", ["Kashmere Gate", "GB Road", "New Delhi Railway Station", "Rajiv Chowk"]),
+            ("METRO-YL", "Yellow Line", "Samaypur Badli - Huda City Centre", "METRO", "#FBC02D", ["Kashmere Gate", "Rajiv Chowk", "Central Secretariat", "AIIMS", "Hauz Khas", "Saket"]),
+        ]
+
+        for rid, short_name, long_name, mode, color, stop_names in mock_routes_def:
+            seq = []
+            for sname in stop_names:
+                matching_sids = self.name_to_stop_ids.get(sname.lower(), [])
+                if matching_sids:
+                    seq.append(matching_sids[0])
+            self.routes[rid] = TransitRoute(
+                route_id=rid,
+                route_short_name=short_name,
+                route_long_name=long_name,
+                mode=mode,
+                color=color,
+                stops_sequence=seq,
+            )
+            for sid in seq:
+                self.stop_to_routes.setdefault(sid, set()).add(rid)
+
+        print(f"[GTFSNetwork] GTFS mock fallback loaded: {len(self.stops)} stops, {len(self.routes)} routes.")
         self.is_loaded = True
 
     def find_stops_by_query(self, query: str, limit: int = 8) -> list[dict]:
@@ -245,8 +280,11 @@ class GTFSNetwork:
         return results[:limit]
 
     def find_nearest_stop(self, name_or_query: str) -> Optional[Stop]:
-        """Find best matching Stop object by name or substring."""
+        """Find best matching Stop object by exact name, substring, or word match."""
         q = name_or_query.strip().lower()
+        if not q:
+            return None
+
         # 1. Exact match in index
         if q in self.name_to_stop_ids:
             return self.stops[self.name_to_stop_ids[q][0]]
@@ -255,6 +293,22 @@ class GTFSNetwork:
         for stop_name, sids in self.name_to_stop_ids.items():
             if q in stop_name or stop_name in q:
                 return self.stops[sids[0]]
+
+        # 3. Word-level fallback for composite names (e.g., 'GB Road', 'Kashmere Gate Metro')
+        words = [w for w in q.replace(".", " ").replace("-", " ").split() if len(w) >= 2]
+        for word in words:
+            if word in ("gate", "road", "marg", "chowk", "station", "stop", "terminal"):
+                continue  # skip generic words for primary matching
+            for stop_name, sids in self.name_to_stop_ids.items():
+                if word in stop_name:
+                    return self.stops[sids[0]]
+
+        # 4. Final word fallback if still unmatched
+        for word in words:
+            if len(word) >= 3:
+                for stop_name, sids in self.name_to_stop_ids.items():
+                    if word in stop_name:
+                        return self.stops[sids[0]]
 
         return None
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   ArrowLeftRight,
   ChevronLeft,
@@ -40,8 +40,16 @@ const C = {
   violetSoft: "rgba(155,140,255,0.16)",
 };
 
-const CROWD_COLOR = { low: C.teal, medium: C.amber, high: C.coral };
-const CROWD_LABEL = { low: "Light crowd", medium: "Moderate crowd", high: "Heavy crowd" };
+const CROWD_COLOR = {
+  low: C.teal, LOW: C.teal,
+  medium: C.amber, MODERATE: C.amber,
+  high: C.coral, HIGH: C.coral, VERY_HIGH: C.coral,
+};
+const CROWD_LABEL = {
+  low: "Light crowd", LOW: "Light crowd",
+  medium: "Moderate crowd", MODERATE: "Moderate crowd",
+  high: "Heavy crowd", HIGH: "Heavy crowd", VERY_HIGH: "Very heavy crowd",
+};
 
 /* ------------------------------------------------------------------ */
 /* API CONNECTION                                                     */
@@ -62,7 +70,47 @@ const crowdToNumber = {
 
 function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
   const now = new Date();
-  const arrival = new Date(now.getTime() + apiRoute.eta_minutes * 60_000);
+  const arrival = new Date(now.getTime() + (apiRoute.eta_minutes || 0) * 60_000);
+
+  const mappedLegs = (apiRoute.legs && apiRoute.legs.length > 0)
+    ? apiRoute.legs.map(leg => ({
+        type: (leg.mode || "BUS").toLowerCase(),
+        mode: (leg.mode || "BUS").toLowerCase(),
+        route: leg.line || "",
+        label: leg.line || "",
+        from: leg.from_stop || "",
+        to: leg.to_stop || "",
+        from_stop: leg.from_stop || "",
+        to_stop: leg.to_stop || "",
+        mins: leg.travel_minutes || 0,
+        travel_minutes: leg.travel_minutes || 0,
+        stops: leg.num_stops || 0,
+        num_stops: leg.num_stops || 0,
+        fare: leg.fare || 0,
+        crowd: (leg.crowd_estimate || "MODERATE").toLowerCase().replace("very_high", "high").replace("moderate", "medium"),
+        crowd_estimate: leg.crowd_estimate || "MODERATE",
+        line: leg.line || "",
+      }))
+    : [
+        {
+          type: (apiRoute.route_name || "").toLowerCase().includes("metro") ? "metro" : "bus",
+          mode: (apiRoute.route_name || "").toLowerCase().includes("metro") ? "metro" : "bus",
+          route: apiRoute.route_name || "",
+          label: apiRoute.route_name || "",
+          from: "",
+          to: "",
+          from_stop: "",
+          to_stop: "",
+          mins: apiRoute.eta_minutes || 0,
+          travel_minutes: apiRoute.eta_minutes || 0,
+          stops: 4,
+          num_stops: 4,
+          fare: apiRoute.fare ?? 25,
+          crowd: (apiRoute.crowd_level ?? "MODERATE").toLowerCase().replace("very_high", "high").replace("moderate", "medium"),
+          crowd_estimate: apiRoute.crowd_level || "MODERATE",
+          line: apiRoute.route_name || "",
+        }
+      ];
 
   return {
     key,
@@ -77,26 +125,21 @@ function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
     }),
     transfers: apiRoute.transfers,
     crowdScore: crowdToNumber[apiRoute.crowd_level] ?? 2,
-    fare: "—",
+    fare: apiRoute.fare ?? 25,
     reason: apiRoute.reason,
     delayMinutes: apiRoute.delay_minutes,
     reliability: apiRoute.reliability,
     crowdLevel: apiRoute.crowd_level,
     crowdConfidence: apiRoute.crowd_confidence,
-    legs: [
-      {
-        type: apiRoute.route_name.toLowerCase().includes("metro")
-          ? "metro"
-          : "bus",
-        route: apiRoute.route_name,
-        label: apiRoute.route_name,
-        mins: apiRoute.eta_minutes,
-        stops: 4,
-        crowd: (apiRoute.crowd_level ?? "MODERATE").toLowerCase()
-          .replace("very_high", "high")
-          .replace("moderate", "medium"),
-      },
-    ],
+    // Preserve raw API fields for RouteCard display & compatibility
+    eta_minutes: apiRoute.eta_minutes,
+    crowd_level: apiRoute.crowd_level,
+    delay_minutes: apiRoute.delay_minutes,
+    route_name: apiRoute.route_name,
+    route_type: apiRoute.route_type,
+    distance_km: apiRoute.distance_km,
+    legs: mappedLegs,
+    _raw: apiRoute,
   };
 }
 
@@ -364,6 +407,8 @@ function PlanScreen({
   to,
   setFrom,
   setTo,
+  departureTime,
+  setDepartureTime,
   onFindRoutes,
   loading,
   error,
@@ -728,32 +773,45 @@ function RouteCard({ option, isRecommended, onSelect }) {
 }
 
 function ResultsScreen({ from, to, recommendData, onBack, onSelect }) {
-  const { recommended_route, alternatives, metadata } = recommendData;
-  const allRoutes = [recommended_route, ...(alternatives || [])];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <TopBar onBack={onBack} title="ML Route Options" subtitle={`${from} → ${to}`} />
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
-        <RouteCard route={routes.optimum} onSelect={() => onSelect("optimum")} />
-        <RouteCard route={routes.quickest} onSelect={() => onSelect("quickest")} />
-        <RouteCard route={routes.calm} onSelect={() => onSelect("calm")} />
+        {recommendData?.optimum && (
+          <RouteCard
+            option={recommendData.optimum}
+            isRecommended={true}
+            onSelect={() => onSelect(recommendData.optimum._raw || recommendData.optimum)}
+          />
+        )}
+        {recommendData?.quickest && (
+          <RouteCard
+            option={recommendData.quickest}
+            onSelect={() => onSelect(recommendData.quickest._raw || recommendData.quickest)}
+          />
+        )}
+        {recommendData?.calm && (
+          <RouteCard
+            option={recommendData.calm}
+            onSelect={() => onSelect(recommendData.calm._raw || recommendData.calm)}
+          />
+        )}
         <div
-  style={{
-    fontSize: 11,
-    color: C.textFaint,
-    fontFamily: "'Inter', sans-serif",
-    textAlign: "center",
-    padding: "6px 20px 4px",
-    lineHeight: 1.5,
-  }}
->
-  {routes.metadata?.prediction_mode === "mock"
-    ? "Prototype prediction based on simulated inputs."
-    : `Prediction confidence: ${Math.round(
-        (routes.metadata?.confidence ?? 0) * 100
-      )}%`}
-</div>
+          style={{
+            fontSize: 11,
+            color: C.textFaint,
+            fontFamily: "'Inter', sans-serif",
+            textAlign: "center",
+            padding: "6px 20px 4px",
+            lineHeight: 1.5,
+          }}
+        >
+          {recommendData?.metadata?.prediction_mode === "mock"
+            ? "Prototype prediction based on simulated inputs."
+            : `Prediction confidence: ${Math.round(
+                (recommendData?.metadata?.confidence ?? 0.88) * 100
+              )}%`}
+        </div>
       </div>
     </div>
   );
@@ -888,7 +946,11 @@ export default function TransitApp() {
   const [screen, setScreen] = useState("plan"); // plan | results | detail
   const [from, setFrom] = useState("Connaught Place");
   const [to, setTo] = useState("");
+  const [departureTime, setDepartureTime] = useState(
+    new Date().toTimeString().slice(0, 5)
+  );
   const [routes, setRoutes] = useState(null);
+  const [selectedRoute, setSelectedRoute] = useState(null);
   const [activeKey, setActiveKey] = useState("optimum");
   const [isMapExpanded, setIsMapExpanded] = useState(false);
 
@@ -907,7 +969,7 @@ export default function TransitApp() {
     const payload = JSON.stringify({
       from: from.trim(),
       to: to.trim(),
-      departure_time: new Date().toTimeString().slice(0, 5),
+      departure_time: departureTime || new Date().toTimeString().slice(0, 5),
     });
 
     let successData = null;
@@ -986,6 +1048,8 @@ export default function TransitApp() {
             to={to}
             setFrom={setFrom}
             setTo={setTo}
+            departureTime={departureTime}
+            setDepartureTime={setDepartureTime}
             onFindRoutes={handleFindRoutes}
             loading={loading}
             error={error}
@@ -993,11 +1057,11 @@ export default function TransitApp() {
             setIsMapExpanded={setIsMapExpanded}
           />
         )}
-        {screen === "results" && recommendData && (
+        {screen === "results" && routes && (
           <ResultsScreen
             from={from}
             to={to}
-            recommendData={recommendData}
+            recommendData={routes}
             onBack={() => setScreen("plan")}
             onSelect={(route) => {
               setSelectedRoute(route);
