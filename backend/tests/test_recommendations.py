@@ -22,7 +22,7 @@ def test_recommend_success():
     assert rec["crowd_score"] >= 0
     assert rec["crowd_level"] in ["LOW", "MODERATE", "HIGH", "VERY_HIGH"]
     assert len(rec["legs"]) > 0
-    assert "★ ML Recommended" in rec["reason"]
+    assert "ML Recommended" in rec["reason"]
 
 
 def test_recommend_same_origin_destination():

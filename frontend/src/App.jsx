@@ -165,7 +165,7 @@ function adaptApiResponse(data) {
     return {
       isSingleRoute: true,
       routesList: [
-        toUiRoute(single, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST PICK")
+        toUiRoute(single, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "BEST PICK")
       ],
       metadata: data.metadata,
     };
@@ -186,7 +186,7 @@ function adaptApiResponse(data) {
 
   const routesList = [];
   if (optimumRoute && optimumRoute !== quickestRoute && optimumRoute !== calmRoute) {
-    routesList.push(toUiRoute(optimumRoute, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST BALANCED"));
+    routesList.push(toUiRoute(optimumRoute, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "BEST BALANCED"));
   }
   if (quickestRoute) {
     routesList.push(toUiRoute(quickestRoute, "quickest", "QUICKEST", C.amber, C.amberSoft, Zap));
@@ -197,7 +197,7 @@ function adaptApiResponse(data) {
 
   return {
     isSingleRoute: routesList.length <= 1,
-    routesList: routesList.length > 0 ? routesList : [toUiRoute(uniqueRoutes[0], "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST PICK")],
+    routesList: routesList.length > 0 ? routesList : [toUiRoute(uniqueRoutes[0], "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "BEST PICK")],
     metadata: data.metadata,
   };
 }
@@ -797,7 +797,7 @@ function RouteCard({ option, onSelect }) {
         <CrowdMeter level={option.crowd_level} />
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 10.5, color: C.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>
-            ⚡ {routeConfPct}% ML Conf
+            {routeConfPct}% ML Conf
           </span>
           <span style={{ fontSize: 11.5, color: C.textFaint, fontFamily: "'Inter', sans-serif" }}>Details ›</span>
         </div>
@@ -1101,7 +1101,7 @@ export default function TransitApp() {
               boxShadow: appMode === "commuter" ? "0 2px 8px rgba(0, 0, 0, 0.25)" : "none",
             }}
           >
-            🧭 Commuter Journey App
+            Commuter Journey App
           </button>
           <button
             onClick={() => setAppMode("gov")}
@@ -1122,7 +1122,7 @@ export default function TransitApp() {
               boxShadow: appMode === "gov" ? "0 2px 8px rgba(0, 0, 0, 0.25)" : "none",
             }}
           >
-            🏛️ Delhi Transit Authority (Gov)
+            Delhi Transit Authority (Gov)
           </button>
         </div>
       </div>

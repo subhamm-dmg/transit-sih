@@ -62,17 +62,17 @@ def build_reason(
     """Generates user-friendly explanations for route recommendations."""
     if is_recommended:
         if crowd_level in ("LOW", "MODERATE") and delay_minutes <= 4:
-            return f"★ ML Recommended: Optimal balance of ETA ({eta_minutes}m), light crowding ({crowd_level}), and minimal delay risk."
-        return f"★ ML Recommended: Best composite score balancing journey time ({eta_minutes}m) against network crowding."
+            return f"ML Recommended: Optimal balance of ETA ({eta_minutes}m), light crowding ({crowd_level}), and minimal delay risk."
+        return f"ML Recommended: Best composite score balancing journey time ({eta_minutes}m) against network crowding."
 
     if route_type == "QUICKEST":
-        return f"⚡ Quickest option ({eta_minutes}m), but carries higher crowd density ({crowd_level})."
+        return f"Quickest option ({eta_minutes}m), but carries higher crowd density ({crowd_level})."
 
     if route_type == "CALM" or crowd_level == "LOW":
-        return f"🌿 Least crowded option ({crowd_level}) for comfortable seating, with slightly longer transit time."
+        return f"Least crowded option ({crowd_level}) for comfortable seating, with slightly longer transit time."
 
     if delay_minutes >= 7:
-        return f"⚠ Higher predicted delay (+{delay_minutes}m) due to corridor bottlenecks."
+        return f"Higher predicted delay (+{delay_minutes}m) due to corridor bottlenecks."
 
     if transfers == 0:
         return "Direct single-leg route without interchange hassle."
