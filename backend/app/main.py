@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.api import gov, health, recommendations, routes
+from app.api import gov, health, insights, recommendations, routes
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -41,6 +41,7 @@ app.include_router(health.router, prefix="/api")
 app.include_router(recommendations.router, prefix="/api")
 app.include_router(routes.router, prefix="/api")
 app.include_router(gov.router, prefix="/api")
+app.include_router(insights.router, prefix="/api")
 
 
 @app.exception_handler(ValidationError)
