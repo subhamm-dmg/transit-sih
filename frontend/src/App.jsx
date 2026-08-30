@@ -144,41 +144,31 @@ function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
 }
 
 function adaptApiResponse(data) {
-  const allRoutes = [data.recommended_route, ...data.alternatives];
+  const rawRoutes = [data.recommended_route, ...(data.alternatives || [])].filter(Boolean);
 
-  const fastest = [...allRoutes].sort(
-    (a, b) => a.eta_minutes - b.eta_minutes
-  )[0];
+  // De-duplicate by signature
+  const uniqueRoutes = [];
+  const seen = new Set();
+  for (const r of rawRoutes) {
+    const sig = `${(r.route_name || "").toLowerCase().trim()}-${r.eta_minutes}`;
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      uniqueRoutes.push(r);
+    }
+  }
 
-  const leastCrowded = [...allRoutes].sort(
-    (a, b) => a.crowd_score - b.crowd_score
-  )[0];
+  const uiRoutes = uniqueRoutes.map((r, idx) => {
+    const isOpt = idx === 0 || r.route_type === "OPTIMUM";
+    const isQuick = r.route_type === "QUICKEST";
+    const label = isOpt ? "Recommended" : isQuick ? "Quickest" : "Alternative";
+    const accent = isOpt ? C.violet : isQuick ? C.amber : C.teal;
+    const accentSoft = isOpt ? C.violetSoft : isQuick ? C.amberSoft : C.tealSoft;
+    const Icon = isOpt ? Sparkles : isQuick ? Zap : Users;
+    return toUiRoute(r, `route_${idx}`, label, accent, accentSoft, Icon);
+  });
 
   return {
-    quickest: toUiRoute(
-      fastest,
-      "quickest",
-      "Quickest",
-      C.amber,
-      C.amberSoft,
-      Zap
-    ),
-    calm: toUiRoute(
-      leastCrowded,
-      "calm",
-      "Least Crowded",
-      C.teal,
-      C.tealSoft,
-      Users
-    ),
-    optimum: toUiRoute(
-      data.recommended_route,
-      "optimum",
-      "Recommended",
-      C.violet,
-      C.violetSoft,
-      Sparkles
-    ),
+    routes: uiRoutes,
     metadata: data.metadata,
   };
 }
@@ -773,29 +763,29 @@ function RouteCard({ option, isRecommended, onSelect }) {
 }
 
 function ResultsScreen({ from, to, recommendData, onBack, onSelect }) {
+  const routeList = recommendData?.routes || (
+    [recommendData?.optimum, recommendData?.quickest, recommendData?.calm].filter(Boolean)
+  );
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <TopBar onBack={onBack} title="ML Route Options" subtitle={`${from} → ${to}`} />
+      <TopBar onBack={onBack} title={routeList.length === 1 ? "Direct Route" : "Route Options"} subtitle={`${from} → ${to}`} />
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
-        {recommendData?.optimum && (
+        {routeList.map((route, idx) => (
           <RouteCard
-            option={recommendData.optimum}
-            isRecommended={true}
-            onSelect={() => onSelect(recommendData.optimum._raw || recommendData.optimum)}
+            key={route.key || idx}
+            option={route}
+            isRecommended={idx === 0}
+            onSelect={() => onSelect(route._raw || route)}
           />
+        ))}
+
+        {routeList.length === 1 && (
+          <div style={{ fontSize: 11.5, color: C.textDim, fontFamily: "'IBM Plex Mono', monospace", textAlign: "center", padding: "6px 12px", background: C.surface2, borderRadius: 10, border: `1px solid ${C.line}` }}>
+            ★ Direct transit line connecting your origin and destination
+          </div>
         )}
-        {recommendData?.quickest && (
-          <RouteCard
-            option={recommendData.quickest}
-            onSelect={() => onSelect(recommendData.quickest._raw || recommendData.quickest)}
-          />
-        )}
-        {recommendData?.calm && (
-          <RouteCard
-            option={recommendData.calm}
-            onSelect={() => onSelect(recommendData.calm._raw || recommendData.calm)}
-          />
-        )}
+
         <div
           style={{
             fontSize: 11,
