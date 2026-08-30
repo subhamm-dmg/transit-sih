@@ -65,6 +65,9 @@ class RouteOption(BaseModel):
         default=None,
         description="Internal scoring value used for ranking (lower is better).",
     )
+    eta_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    delay_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    crowd_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class RecommendationMetadata(BaseModel):

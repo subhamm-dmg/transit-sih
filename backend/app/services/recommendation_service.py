@@ -1,16 +1,25 @@
 """
 RecommendationService — orchestrates RoutingService + PredictionService +
-scoring to build the final ranked list of RouteOption objects.
+ScoringService to build the final ranked list of RouteOption objects.
 
 This is the single place that composes candidate routes with predictions
 and a score, so /api/routes and /api/recommend both build results the
 same way instead of duplicating logic in the route handlers.
+
+PredictionService does NOT decide which route wins - ScoringService still
+owns ranking. This module just wires the two together and supplies
+optional traffic/weather context to the prediction engine, degrading
+gracefully (falling back to pure heuristics) if either is unavailable.
 """
 
-from app.models.schemas import CrowdLevel, RecommendationMetadata, RouteOption
+from datetime import datetime
+
+from app.models.schemas import RecommendationMetadata, RouteOption
 from app.services import scoring_service
-from app.services.prediction_service import PREDICTION_MODE, PredictionService
+from app.services.prediction_service import PredictionService, RouteInfo
 from app.services.routing_service import RouteNotFoundError, RoutingService
+from app.services.traffic_service import TrafficService
+from app.services.weather_service import WeatherService
 
 
 class RecommendationService:
@@ -18,9 +27,15 @@ class RecommendationService:
         self,
         routing_service: RoutingService | None = None,
         prediction_service: PredictionService | None = None,
+        traffic_service: TrafficService | None = None,
+        weather_service: WeatherService | None = None,
     ) -> None:
         self.routing_service = routing_service or RoutingService()
         self.prediction_service = prediction_service or PredictionService()
+        # Optional data sources. Never let a failure here break the whole
+        # request - see _get_traffic_info / _get_weather_info below.
+        self.traffic_service = traffic_service or TrafficService()
+        self.weather_service = weather_service or WeatherService()
 
     def get_ranked_routes(
         self, origin: str, destination: str, departure_time: str
@@ -34,21 +49,33 @@ class RecommendationService:
         if not candidates:
             raise RouteNotFoundError(f"No routes found from '{origin}' to '{destination}'")
 
+        is_weekend = datetime.now().weekday() >= 5  # Sat=5, Sun=6
+        traffic_info = self._get_traffic_info(destination, departure_time)
+        weather_info = self._get_weather_info(destination, departure_time)
+
         options: list[RouteOption] = []
+        prediction_modes: set[str] = set()
+        data_sources: set[str] = set()
+        confidences: list[float] = []
+
         for candidate in candidates:
-            eta = self.prediction_service.predict_eta(
-                candidate.base_travel_minutes, candidate.route_id, departure_time
+            route_info = RouteInfo.from_candidate(candidate)
+            prediction = self.prediction_service.predict(
+                route_info,
+                departure_time=departure_time,
+                is_weekend=is_weekend,
+                traffic_info=traffic_info,
+                weather_info=weather_info,
             )
-            delay = self.prediction_service.predict_delay(candidate.route_id, departure_time)
-            crowding = self.prediction_service.predict_crowding(
-                candidate.route_id, departure_time, candidate.transfers
+
+            reliability = scoring_service.compute_reliability(
+                prediction.delay_minutes, candidate.transfers
             )
-            reliability = scoring_service.compute_reliability(delay, candidate.transfers)
             score = scoring_service.score_route(
-                eta_minutes=eta,
+                eta_minutes=prediction.eta_minutes,
                 waiting_minutes=candidate.base_waiting_minutes,
-                delay_minutes=delay,
-                crowd_score=crowding.crowd_score,
+                delay_minutes=prediction.delay_minutes,
+                crowd_score=prediction.crowd_score,
                 transfers=candidate.transfers,
                 reliability=reliability,
             )
@@ -57,16 +84,24 @@ class RecommendationService:
                 RouteOption(
                     route_id=candidate.route_id,
                     route_name=candidate.route_name,
-                    eta_minutes=eta,
+                    eta_minutes=prediction.eta_minutes,
                     waiting_minutes=candidate.base_waiting_minutes,
-                    delay_minutes=delay,
-                    crowd_level=CrowdLevel(crowding.crowd_level.value),
-                    crowd_score=crowding.crowd_score,
+                    delay_minutes=prediction.delay_minutes,
+                    crowd_level=prediction.crowd_level.value,
+                    crowd_score=prediction.crowd_score,
                     reliability=reliability,
                     transfers=candidate.transfers,
                     reason="",  # filled in below once ranking is known
                     score=score,
+                    eta_confidence=prediction.eta_confidence,
+                    delay_confidence=prediction.delay_confidence,
+                    crowd_confidence=prediction.crowd_confidence,
                 )
+            )
+            prediction_modes.add(prediction.prediction_mode)
+            data_sources.add(prediction.data_source)
+            confidences.append(
+                (prediction.eta_confidence + prediction.delay_confidence + prediction.crowd_confidence) / 3
             )
 
         options.sort(key=lambda opt: opt.score if opt.score is not None else float("inf"))
@@ -79,12 +114,30 @@ class RecommendationService:
                 delay_minutes=option.delay_minutes,
             )
 
+        overall_confidence = round(sum(confidences) / len(confidences), 2) if confidences else 0.5
         metadata = RecommendationMetadata(
-            prediction_mode=PREDICTION_MODE,
-            data_source="mock",
-            confidence=0.75,
+            prediction_mode="+".join(sorted(prediction_modes)) or "heuristic",
+            data_source="+".join(sorted(data_sources)) or "heuristic",
+            confidence=overall_confidence,
         )
         return options, metadata
+
+    # -- optional data sources: never let these break a request ------------
+
+    def _get_traffic_info(self, area: str, departure_time: str):
+        try:
+            return self.traffic_service.get_traffic_level(area, departure_time)
+        except Exception:
+            # Traffic data unavailable -> PredictionService falls back to
+            # its own peak-hour heuristic. Never fail the request for this.
+            return None
+
+    def _get_weather_info(self, area: str, departure_time: str):
+        try:
+            return self.weather_service.get_weather(area, departure_time)
+        except Exception:
+            # Same graceful-degradation contract as traffic above.
+            return None
 
 
 __all__ = ["RecommendationService", "RouteNotFoundError"]
