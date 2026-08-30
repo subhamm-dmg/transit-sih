@@ -63,9 +63,14 @@ def build_reason(
 ) -> str:
     """Short human-readable explanation for why a route ranked where it did."""
     if is_recommended:
-        return f"Best balance of travel time, low crowding ({crowd_level}), and delay risk"
+        if crowd_level in ("HIGH", "VERY_HIGH"):
+            return f"Best overall option despite {crowd_level.lower().replace('_', ' ')} crowding"
+        return f"Best balance of travel time, crowding ({crowd_level}), and delay risk"
+
     if delay_minutes >= 7:
         return "Faster but higher predicted delay risk"
+
     if crowd_level in ("HIGH", "VERY_HIGH"):
         return "Faster but higher crowding"
+
     return "Alternative option with a different time/comfort trade-off"
