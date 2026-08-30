@@ -72,10 +72,17 @@ implementation later **without changing the API contract**:
 
 | Service | Tonight | Tomorrow |
 |---|---|---|
-| RoutingService | Small hardcoded stop/route network | GTFS-based routing |
+| RoutingService | Facade over `MockRoutingProvider` (small hardcoded stop/route network), selected via `ROUTING_MODE` | Implement `GoogleRoutesProvider` (stub already present) or a GTFS provider — flip `ROUTING_MODE`, nothing else changes |
 | PredictionService | Deterministic mock ETA/delay/crowding | Real ML models |
 | TrafficService | Deterministic mock traffic level | Real traffic API |
 | WeatherService | Deterministic mock weather | Open-Meteo or similar |
+
+### Routing layer detail
+
+`RoutingService` is a thin facade that picks a `RoutingProvider` implementation based on `ROUTING_MODE`:
+
+- `ROUTING_MODE=mock` (default) → `MockRoutingProvider`, today's offline hardcoded network.
+- `ROUTING_MODE=google` → `GoogleRoutesProvider`, a **stub** — raises `NotImplementedError` with a clear message if actually called. No API key is read or required for the app to run; implement this class when Google Routes integration is ready, using `RoutingProvider` as the contract. Nothing in `RecommendationService`, `PredictionService`, or the API layer needs to change when you do.
 
 ## API Endpoints
 

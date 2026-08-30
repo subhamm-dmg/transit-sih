@@ -45,7 +45,9 @@ class RecommendationService:
 
         Raises RouteNotFoundError if no candidate routes exist for the pair.
         """
-        candidates = self.routing_service.get_candidate_routes(origin, destination)
+        candidates = self.routing_service.get_candidate_routes(
+            origin, destination, departure_time
+        )
         if not candidates:
             raise RouteNotFoundError(f"No routes found from '{origin}' to '{destination}'")
 
