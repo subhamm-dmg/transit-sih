@@ -1060,75 +1060,76 @@ export default function TransitApp() {
         }
       `}</style>
 
-      {/* Top Application Mode Switcher Bar */}
+      {/* Apple-Style Floating Segmented Control */}
       <div
         style={{
-          maxWidth: appMode === "gov" ? 1040 : 440,
-          margin: "0 auto 16px",
+          width: "100%",
           display: "flex",
-          alignItems: "center",
           justifyContent: "center",
-          gap: 16,
-          padding: "4px",
+          marginBottom: appMode === "gov" ? 0 : 20,
         }}
       >
-        <button
-          onClick={() => setAppMode("commuter")}
+        <div
           style={{
-            padding: "9px 20px",
-            borderRadius: 12,
-            border: appMode === "commuter" ? `1px solid ${C.teal}` : `1px solid ${C.line}`,
-            background: appMode === "commuter" ? C.teal : C.surface,
-            color: appMode === "commuter" ? "#0A0D14" : C.textDim,
-            fontFamily: "'Space Grotesk', sans-serif",
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: "pointer",
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            gap: 8,
-            transition: "all 0.15s ease",
-            boxShadow: appMode === "commuter" ? "0 4px 12px rgba(61,214,186,0.2)" : "none",
+            padding: "4px",
+            borderRadius: 999,
+            background: "rgba(255, 255, 255, 0.05)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.3)",
           }}
         >
-          🧭 Commuter Journey App
-        </button>
-        <button
-          onClick={() => setAppMode("gov")}
-          style={{
-            padding: "9px 20px",
-            borderRadius: 12,
-            border: appMode === "gov" ? `1px solid ${C.amber}` : `1px solid ${C.line}`,
-            background: appMode === "gov" ? C.amber : C.surface,
-            color: appMode === "gov" ? "#0A0D14" : C.textDim,
-            fontFamily: "'Space Grotesk', sans-serif",
-            fontWeight: 700,
-            fontSize: 13,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            transition: "all 0.15s ease",
-            boxShadow: appMode === "gov" ? "0 4px 12px rgba(255,170,44,0.2)" : "none",
-          }}
-        >
-          🏛️ Delhi Transit Authority (Gov)
-        </button>
+          <button
+            onClick={() => setAppMode("commuter")}
+            style={{
+              padding: "8px 22px",
+              borderRadius: 999,
+              border: "none",
+              background: appMode === "commuter" ? "rgba(255, 255, 255, 0.14)" : "transparent",
+              color: appMode === "commuter" ? "#FFFFFF" : C.textDim,
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+              boxShadow: appMode === "commuter" ? "0 2px 8px rgba(0, 0, 0, 0.25)" : "none",
+            }}
+          >
+            🧭 Commuter Journey App
+          </button>
+          <button
+            onClick={() => setAppMode("gov")}
+            style={{
+              padding: "8px 22px",
+              borderRadius: 999,
+              border: "none",
+              background: appMode === "gov" ? "rgba(255, 255, 255, 0.14)" : "transparent",
+              color: appMode === "gov" ? "#FFFFFF" : C.textDim,
+              fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)",
+              boxShadow: appMode === "gov" ? "0 2px 8px rgba(0, 0, 0, 0.25)" : "none",
+            }}
+          >
+            🏛️ Delhi Transit Authority (Gov)
+          </button>
+        </div>
       </div>
 
       {/* Main Screen Content */}
       {appMode === "gov" ? (
-        <div
-          style={{
-            maxWidth: 1040,
-            margin: "0 auto",
-            background: C.bg,
-            borderRadius: 20,
-            overflow: "hidden",
-            boxShadow: "0 30px 60px rgba(0,0,0,0.5)",
-            border: `1px solid ${C.line}`,
-          }}
-        >
+        <div style={{ width: "100%", maxWidth: 1400, margin: "0 auto", transition: "all 0.3s ease" }}>
           <GovDashboard onBackToCommuter={() => setAppMode("commuter")} />
         </div>
       ) : (
@@ -1138,12 +1139,13 @@ export default function TransitApp() {
             minHeight: 640,
             maxWidth: 420,
             margin: "0 auto",
-            background: C.bg,
-            borderRadius: 24,
+            background: "rgba(18, 21, 32, 0.85)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            borderRadius: 32,
             overflow: "hidden",
-            boxShadow: "0 30px 60px rgba(0,0,0,0.45)",
-            border: `1px solid ${C.line}`,
-            fontFamily: "'Inter', sans-serif",
+            boxShadow: "0 32px 64px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08)",
+            fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif",
             display: "flex",
             flexDirection: "column",
             height: 680,

@@ -253,43 +253,48 @@ export default function GovDashboard({ onBackToCommuter }) {
       style={{
         width: "100%",
         minHeight: "100vh",
-        background: C.bg,
+        background: "#080A10",
         color: C.text,
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', system-ui, sans-serif",
       }}
     >
-      {/* Enterprise Navigation Header */}
+      {/* Apple-Style Navigation Bar */}
       <header
         style={{
-          borderBottom: `1px solid ${C.line}`,
-          background: C.surface,
-          padding: "16px 28px",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          background: "rgba(14, 17, 26, 0.8)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          padding: "16px 32px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          position: "sticky",
+          top: 0,
+          zIndex: 40,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 8,
+              width: 38,
+              height: 38,
+              borderRadius: 10,
               background: "linear-gradient(135deg, #2CD3B5 0%, #1A8A76 100%)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              boxShadow: "0 2px 8px rgba(44,211,181,0.25)",
+              boxShadow: "0 4px 16px rgba(44, 211, 181, 0.3)",
             }}
           >
-            <Activity size={19} color="#0B0D14" />
+            <Activity size={20} color="#0B0D14" />
           </div>
           <div>
-            <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: -0.2, color: C.text }}>
+            <div style={{ fontWeight: 700, fontSize: 16.5, letterSpacing: -0.3, color: "#FFFFFF" }}>
               Delhi Integrated Multi-Modal Transit Authority
             </div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 1 }}>
-              DTC Bus & DMRC Metro Real-Time Operations Portal
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 2, fontWeight: 400 }}>
+              DTC Bus & DMRC Metro Real-Time Operations Control Center
             </div>
           </div>
         </div>
@@ -301,18 +306,19 @@ export default function GovDashboard({ onBackToCommuter }) {
               display: "flex",
               alignItems: "center",
               gap: 6,
-              padding: "7px 14px",
-              background: "transparent",
-              border: `1px solid ${C.line}`,
-              borderRadius: 8,
+              padding: "8px 16px",
+              background: "rgba(255, 255, 255, 0.06)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 999,
               color: C.textDim,
               fontSize: 12.5,
+              fontWeight: 500,
               cursor: "pointer",
               transition: "all 0.15s ease",
             }}
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            Sync Feeds
+            Sync Telemetry
           </button>
           <button
             onClick={onBackToCommuter}
@@ -320,14 +326,15 @@ export default function GovDashboard({ onBackToCommuter }) {
               display: "flex",
               alignItems: "center",
               gap: 6,
-              padding: "7px 16px",
+              padding: "8px 18px",
               background: C.teal,
               border: "none",
-              borderRadius: 8,
-              color: "#0B0D14",
+              borderRadius: 999,
+              color: "#080A10",
               fontWeight: 600,
-              fontSize: 12.5,
+              fontSize: 13,
               cursor: "pointer",
+              boxShadow: "0 2px 10px rgba(44, 211, 181, 0.35)",
             }}
           >
             Commuter View →
@@ -335,25 +342,28 @@ export default function GovDashboard({ onBackToCommuter }) {
         </div>
       </header>
 
-      {/* Main Container */}
-      <main style={{ maxWidth: 1240, margin: "0 auto", padding: "24px 28px", display: "flex", flexDirection: "column", gap: 24 }}>
+      {/* Main Website Container */}
+      <main style={{ maxWidth: 1360, margin: "0 auto", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 24 }}>
         
         {/* KPI Strip */}
         <section
           style={{
-            background: C.surface,
-            borderRadius: 12,
-            border: `1px solid ${C.line}`,
+            background: "rgba(18, 22, 34, 0.7)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderRadius: 20,
+            border: "1px solid rgba(255, 255, 255, 0.08)",
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             overflow: "hidden",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
           }}
         >
-          <div style={{ padding: "18px 22px", borderRight: `1px solid ${C.line}` }}>
+          <div style={{ padding: "20px 24px", borderRight: "1px solid rgba(255, 255, 255, 0.08)" }}>
             <div style={{ fontSize: 12, color: C.textDim, fontWeight: 500, marginBottom: 6 }}>
               Total Daily Departures
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, color: C.text }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, color: "#FFFFFF" }}>
               {summary?.scheduled_service?.total_scheduled_departures
                 ? summary.scheduled_service.total_scheduled_departures.toLocaleString()
                 : "3,276,092"}
@@ -363,11 +373,11 @@ export default function GovDashboard({ onBackToCommuter }) {
             </div>
           </div>
 
-          <div style={{ padding: "18px 22px", borderRight: `1px solid ${C.line}` }}>
+          <div style={{ padding: "20px 24px", borderRight: "1px solid rgba(255, 255, 255, 0.08)" }}>
             <div style={{ fontSize: 12, color: C.textDim, fontWeight: 500, marginBottom: 6 }}>
               Peak Demand Hour
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, color: C.amber }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, color: C.amber }}>
               {summary?.scheduled_service?.peak_hour || "09:00 AM"}
             </div>
             <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 4 }}>
@@ -375,11 +385,11 @@ export default function GovDashboard({ onBackToCommuter }) {
             </div>
           </div>
 
-          <div style={{ padding: "18px 22px", borderRight: `1px solid ${C.line}` }}>
+          <div style={{ padding: "20px 24px", borderRight: "1px solid rgba(255, 255, 255, 0.08)" }}>
             <div style={{ fontSize: 12, color: C.textDim, fontWeight: 500, marginBottom: 6 }}>
               Critical Transfer Hubs
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, color: C.coral }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, color: C.coral }}>
               {bottlenecks.length} Nodes
             </div>
             <div style={{ fontSize: 11.5, color: C.coral, marginTop: 4 }}>
@@ -387,11 +397,11 @@ export default function GovDashboard({ onBackToCommuter }) {
             </div>
           </div>
 
-          <div style={{ padding: "18px 22px" }}>
+          <div style={{ padding: "20px 24px" }}>
             <div style={{ fontSize: 12, color: C.textDim, fontWeight: 500, marginBottom: 6 }}>
               Active Monitored Corridors
             </div>
-            <div style={{ fontSize: 26, fontWeight: 700, letterSpacing: -0.5, color: C.blue }}>
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.6, color: C.blue }}>
               485 Routes
             </div>
             <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 4 }}>
@@ -403,10 +413,13 @@ export default function GovDashboard({ onBackToCommuter }) {
         {/* Spatial Map & Hotspots Section */}
         <section
           style={{
-            background: C.surface,
-            borderRadius: 12,
-            border: `1px solid ${C.line}`,
+            background: "rgba(18, 22, 34, 0.7)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderRadius: 20,
+            border: "1px solid rgba(255, 255, 255, 0.08)",
             overflow: "hidden",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
           }}
         >
           <div
@@ -540,19 +553,22 @@ export default function GovDashboard({ onBackToCommuter }) {
           {/* Arterial Corridors Data List */}
           <div
             style={{
-              background: C.surface,
-              borderRadius: 12,
-              border: `1px solid ${C.line}`,
+              background: "rgba(18, 22, 34, 0.7)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              borderRadius: 20,
+              border: "1px solid rgba(255, 255, 255, 0.08)",
               display: "flex",
               flexDirection: "column",
               overflow: "hidden",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
             }}
           >
-            <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.line}` }}>
-              <div style={{ fontWeight: 600, fontSize: 14, color: C.text }}>
+            <div style={{ padding: "18px 24px", borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
+              <div style={{ fontWeight: 600, fontSize: 15, color: "#FFFFFF", letterSpacing: -0.2 }}>
                 High-Volume Transit Corridors ({corridorList.length})
               </div>
-              <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 1 }}>
+              <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
                 Ridership demand, delay index, and schedule reliability metrics (scrollable)
               </div>
             </div>
@@ -563,34 +579,34 @@ export default function GovDashboard({ onBackToCommuter }) {
                   key={corridor.id || idx}
                   onClick={() => setActiveCorridor(corridor)}
                   style={{
-                    padding: "14px 20px",
-                    borderBottom: idx < corridorList.length - 1 ? `1px solid ${C.lineMuted}` : "none",
-                    background: activeCorridor?.id === corridor.id ? C.surfaceElevated : "transparent",
+                    padding: "16px 24px",
+                    borderBottom: idx < corridorList.length - 1 ? "1px solid rgba(255, 255, 255, 0.05)" : "none",
+                    background: activeCorridor?.id === corridor.id ? "rgba(255, 255, 255, 0.08)" : "transparent",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
-                    transition: "background 0.15s ease",
+                    transition: "all 0.15s ease",
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 13, color: C.text, display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13.5, color: "#FFFFFF", display: "flex", alignItems: "center", gap: 8 }}>
                       <span>{corridor.name}</span>
-                      <span style={{ fontSize: 10.5, color: C.teal, background: C.tealSoft, padding: "1px 6px", borderRadius: 4 }}>
+                      <span style={{ fontSize: 10.5, color: C.teal, background: "rgba(44, 211, 181, 0.12)", padding: "1px 7px", borderRadius: 999, fontWeight: 600 }}>
                         {corridor.id}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 3 }}>
+                    <div style={{ fontSize: 12, color: C.textDim, marginTop: 3 }}>
                       {corridor.type || "Arterial Transit"}
                     </div>
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.text }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#FFFFFF" }}>
                         {(corridor.demand || 12000).toLocaleString()} pax/day
                       </div>
-                      <div style={{ fontSize: 11, color: C.textDim }}>
+                      <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 1 }}>
                         Avg Delay: <strong>{corridor.delay}m</strong> · {corridor.reliability}% On-Time
                       </div>
                     </div>
@@ -604,23 +620,26 @@ export default function GovDashboard({ onBackToCommuter }) {
           {/* Predictive Policy Simulator */}
           <div
             style={{
-              background: C.surface,
-              borderRadius: 12,
-              border: `1px solid ${C.line}`,
-              padding: "20px",
+              background: "rgba(18, 22, 34, 0.7)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              borderRadius: 20,
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              padding: "24px",
               display: "flex",
               flexDirection: "column",
               justifyContent: "space-between",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
             }}
           >
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <Sliders size={16} color={C.amber} />
-                <span style={{ fontWeight: 600, fontSize: 14, color: C.text }}>
+                <span style={{ fontWeight: 600, fontSize: 15, color: "#FFFFFF", letterSpacing: -0.2 }}>
                   Policy Intervention Simulator
                 </span>
               </div>
-              <p style={{ fontSize: 12, color: C.textDim, lineHeight: 1.5, margin: "0 0 14px" }}>
+              <p style={{ fontSize: 12, color: C.textDim, lineHeight: 1.5, margin: "0 0 16px" }}>
                 Test transit management decisions across the Delhi network prior to field implementation.
               </p>
 
@@ -639,13 +658,14 @@ export default function GovDashboard({ onBackToCommuter }) {
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
-                      padding: "8px 12px",
-                      borderRadius: 8,
-                      background: simIntervention === opt.id ? C.surfaceElevated : "transparent",
-                      border: `1px solid ${simIntervention === opt.id ? C.amber : C.line}`,
+                      padding: "9px 14px",
+                      borderRadius: 10,
+                      background: simIntervention === opt.id ? "rgba(255, 176, 32, 0.12)" : "rgba(255, 255, 255, 0.03)",
+                      border: `1px solid ${simIntervention === opt.id ? C.amber : "rgba(255, 255, 255, 0.08)"}`,
                       cursor: "pointer",
-                      fontSize: 12,
-                      color: simIntervention === opt.id ? C.text : C.textDim,
+                      fontSize: 12.5,
+                      color: simIntervention === opt.id ? "#FFFFFF" : C.textDim,
+                      transition: "all 0.15s ease",
                     }}
                   >
                     <input
@@ -661,17 +681,17 @@ export default function GovDashboard({ onBackToCommuter }) {
               </div>
             </div>
 
-            <div style={{ marginTop: 14 }}>
+            <div style={{ marginTop: 16 }}>
               <button
                 onClick={handleRunSimulation}
                 disabled={isSimulating}
                 style={{
                   width: "100%",
-                  padding: "10px 0",
-                  borderRadius: 8,
+                  padding: "11px 0",
+                  borderRadius: 10,
                   border: "none",
                   background: C.amber,
-                  color: "#0B0D14",
+                  color: "#080A10",
                   fontWeight: 600,
                   fontSize: 13,
                   cursor: "pointer",
@@ -679,6 +699,7 @@ export default function GovDashboard({ onBackToCommuter }) {
                   alignItems: "center",
                   justifyContent: "center",
                   gap: 6,
+                  boxShadow: "0 2px 10px rgba(255, 176, 32, 0.3)",
                 }}
               >
                 <Sparkles size={14} />
@@ -689,19 +710,19 @@ export default function GovDashboard({ onBackToCommuter }) {
                 <div
                   style={{
                     marginTop: 14,
-                    padding: "12px 14px",
-                    borderRadius: 8,
-                    background: C.surfaceElevated,
-                    border: `1px solid ${C.teal}`,
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    background: "rgba(44, 211, 181, 0.08)",
+                    border: "1px solid rgba(44, 211, 181, 0.3)",
                   }}
                 >
-                  <div style={{ fontWeight: 600, fontSize: 12.5, color: C.teal, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: C.teal, marginBottom: 4 }}>
                     {simResult.title}
                   </div>
                   <div style={{ fontSize: 11.5, color: C.textDim, lineHeight: 1.4, marginBottom: 8 }}>
                     {simResult.insight}
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 11 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 11.5 }}>
                     <div><span style={{ color: C.teal, fontWeight: 600 }}>{simResult.delayReduction}</span></div>
                     <div><span style={{ color: C.teal, fontWeight: 600 }}>{simResult.reliabilityGain}</span></div>
                     <div>{simResult.crowdRelief}</div>
