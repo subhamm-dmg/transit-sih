@@ -10,14 +10,50 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 from typing import Optional
-from app.services.gtfs_loader import GTFSNetwork, Stop, haversine_distance_km
+from app.services.gtfs_loader import GTFSNetwork, Stop, get_transit_road_distance_km, haversine_distance_km
+
+
+def calculate_metro_fare(distance_km: float) -> int:
+    """Official DMRC standard fare slab."""
+    if distance_km <= 2.0:
+        return 10
+    elif distance_km <= 5.0:
+        return 20
+    elif distance_km <= 12.0:
+        return 30
+    elif distance_km <= 21.0:
+        return 40
+    elif distance_km <= 32.0:
+        return 50
+    else:
+        return 60
+
+
+def calculate_bus_fare(distance_km: float, is_ac: bool = True) -> int:
+    """Official DTC Delhi bus fare slab."""
+    if is_ac:
+        if distance_km <= 4.0:
+            return 10
+        elif distance_km <= 8.0:
+            return 15
+        elif distance_km <= 12.0:
+            return 20
+        else:
+            return 25
+    else:
+        if distance_km <= 4.0:
+            return 5
+        elif distance_km <= 10.0:
+            return 10
+        else:
+            return 15
 
 
 @dataclass(frozen=True)
 class JourneyLeg:
     """One segment of a journey (Walk, Bus, or Metro)."""
     mode: str  # "WALK", "BUS", "METRO"
-    line: str  # e.g., "500D", "Yellow Line", "Direct Express"
+    line: str  # e.g., "500D", "Yellow Line", "Violet Line"
     from_stop: str
     to_stop: str
     travel_minutes: int
@@ -59,8 +95,8 @@ class RoutingService:
 
     def get_candidate_routes(self, origin: str, destination: str) -> list[CandidateRoute]:
         """
-        Calculates 2 to 3 candidate routes (Optimum, Quickest, Calm/Direct)
-        between origin and destination.
+        Calculates 3 diverse candidate routes (Quickest Metro, Optimum Multi-Modal, Calm Bus)
+        between origin and destination with accurate transit road distances and official fares.
         """
         orig_norm = origin.strip()
         dest_norm = destination.strip()
@@ -74,24 +110,45 @@ class RoutingService:
         stop_a = self.network.find_nearest_stop(orig_norm)
         stop_b = self.network.find_nearest_stop(dest_norm)
 
-        # Distance estimation
+        # Accurate transit road distance estimation (calibrated Delhi urban factor)
         if stop_a and stop_b:
-            dist_km = haversine_distance_km(stop_a.lat, stop_a.lon, stop_b.lat, stop_b.lon)
-            if dist_km < 0.5:
-                dist_km = 4.5
+            dist_km = get_transit_road_distance_km(stop_a.lat, stop_a.lon, stop_b.lat, stop_b.lon)
         else:
-            # Deterministic distance based on string hashes
+            # Deterministic distance based on string hashes (range 8.0 to 24.0 km for Delhi NCR)
             h = int(hashlib.md5(f"{orig_norm}-{dest_norm}".encode()).hexdigest(), 16)
-            dist_km = 5.0 + (h % 220) / 10.0  # 5.0 to 27.0 km
+            dist_km = round(8.0 + (h % 160) / 10.0, 2)
+
+        name_a = stop_a.stop_name if stop_a else orig_norm
+        name_b = stop_b.stop_name if stop_b else dest_norm
 
         # Check for direct GTFS line match
         direct_routes = self._find_direct_gtfs_routes(stop_a, stop_b, orig_norm, dest_norm, dist_km)
         transfer_routes = self._find_transfer_gtfs_routes(stop_a, stop_b, orig_norm, dest_norm, dist_km)
 
-        candidates = direct_routes + transfer_routes
+        # Generate the standard 3-route multi-modal suite to guarantee distinct QUICKEST, OPTIMUM, and CALM choices
+        heuristic_routes = self._generate_heuristic_candidates(orig_norm, dest_norm, name_a, name_b, dist_km)
 
+        # Merge candidate pools ensuring unique route types
+        routes_by_type: dict[str, CandidateRoute] = {}
+
+        # Prioritize heuristic generated multi-modal suite for diverse modal choices
+        for r in heuristic_routes:
+            routes_by_type[r.route_type] = r
+
+        # If a real GTFS direct route exists, blend it in
+        for r in direct_routes:
+            if r.route_type == "QUICKEST" or "QUICKEST" not in routes_by_type:
+                routes_by_type["QUICKEST"] = r
+            elif "CALM" not in routes_by_type:
+                routes_by_type["CALM"] = r
+
+        for r in transfer_routes:
+            if "OPTIMUM" not in routes_by_type:
+                routes_by_type["OPTIMUM"] = r
+
+        candidates = list(routes_by_type.values())
         if not candidates:
-            candidates = self._generate_heuristic_candidates(orig_norm, dest_norm, dist_km)
+            candidates = heuristic_routes
 
         return candidates[:3]
 
@@ -118,12 +175,12 @@ class RoutingService:
                     continue
                 num_stops = idx_b - idx_a
             except ValueError:
-                num_stops = max(3, int(dist_km * 1.4))
+                num_stops = max(3, int(dist_km * 1.2))
 
-            is_metro = r_info.mode == "METRO"
-            speed = 36.0 if is_metro else 20.0
-            travel_mins = max(6, int(round((dist_km / speed) * 60.0)))
-            fare = 20 + int(dist_km * 1.5) if is_metro else 15 + int(dist_km * 1.0)
+            is_metro = (r_info.mode == "METRO")
+            speed = 34.0 if is_metro else 18.0
+            travel_mins = max(10, int(round((dist_km / speed) * 60.0)) + int(num_stops * 1.5))
+            fare = calculate_metro_fare(dist_km) if is_metro else calculate_bus_fare(dist_km, is_ac=True)
 
             leg = JourneyLeg(
                 mode=r_info.mode,
@@ -136,21 +193,24 @@ class RoutingService:
                 fare=fare,
             )
 
+            legs = [
+                JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=stop_a.stop_name, travel_minutes=4, num_stops=0, fare=0),
+                leg,
+                JourneyLeg(mode="WALK", line="Walk", from_stop=stop_b.stop_name, to_stop=dest_name, travel_minutes=3, num_stops=0, fare=0),
+            ]
+            total_fare = sum(l.fare for l in legs)
+
             routes.append(
                 CandidateRoute(
                     route_id=f"direct_{rid}",
                     route_name=f"Direct {r_info.mode.title()} — {r_info.route_short_name}",
-                    route_type="QUICKEST" if is_metro else "OPTIMUM",
-                    legs=[
-                        JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=stop_a.stop_name, travel_minutes=4, num_stops=0, fare=0),
-                        leg,
-                        JourneyLeg(mode="WALK", line="Walk", from_stop=stop_b.stop_name, to_stop=dest_name, travel_minutes=3, num_stops=0, fare=0),
-                    ],
+                    route_type="QUICKEST" if is_metro else "CALM",
+                    legs=legs,
                     base_travel_minutes=travel_mins + 7,
                     base_waiting_minutes=4 if is_metro else 6,
                     transfers=0,
                     distance_km=dist_km,
-                    fare=fare,
+                    fare=total_fare,
                     mode_bus_ratio=0.0 if is_metro else 1.0,
                 )
             )
@@ -160,108 +220,136 @@ class RoutingService:
     def _find_transfer_gtfs_routes(
         self, stop_a: Optional[Stop], stop_b: Optional[Stop], orig_name: str, dest_name: str, dist_km: float
     ) -> list[CandidateRoute]:
-        # Generates a clean 1-transfer journey
+        # Generates a realistic 1-transfer journey
         routes: list[CandidateRoute] = []
         name_a = stop_a.stop_name if stop_a else orig_name
         name_b = stop_b.stop_name if stop_b else dest_name
-        mid_stop_name = "Kashmere Gate Interchange" if "kashmere" not in name_a.lower() and "kashmere" not in name_b.lower() else "Rajiv Chowk Interchange"
+        mid_stop_name = "Rajiv Chowk Interchange" if "rajiv" not in name_a.lower() and "rajiv" not in name_b.lower() else "Kashmere Gate Interchange"
 
-        half_dist = dist_km / 2.0
-        leg1_mins = max(8, int(round((half_dist / 35.0) * 60.0)))
-        leg2_mins = max(10, int(round((half_dist / 20.0) * 60.0)))
-        total_mins = leg1_mins + leg2_mins + 8  # with walk/transfer
+        dist1 = round(dist_km * 0.65, 2)
+        dist2 = round(dist_km * 0.35, 2)
+
+        leg1_mins = max(12, int(round((dist1 / 34.0) * 60.0)) + 4)
+        leg2_mins = max(14, int(round((dist2 / 18.0) * 60.0)) + 5)
+        total_mins = leg1_mins + leg2_mins + 8  # with walk & interchange transfer
+
+        fare_leg1 = calculate_metro_fare(dist1)
+        fare_leg2 = calculate_bus_fare(dist2, is_ac=True)
+
+        legs = [
+            JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=name_a, travel_minutes=4, num_stops=0, fare=0),
+            JourneyLeg(mode="METRO", line="Metro Trunk Line", from_stop=name_a, to_stop=mid_stop_name, travel_minutes=leg1_mins, num_stops=max(3, int(dist1 * 0.8)), crowd_estimate="LOW", fare=fare_leg1),
+            JourneyLeg(mode="BUS", line="DTC Feeder Bus (AC)", from_stop=mid_stop_name, to_stop=name_b, travel_minutes=leg2_mins, num_stops=max(4, int(dist2 * 1.5)), crowd_estimate="MODERATE", fare=fare_leg2),
+            JourneyLeg(mode="WALK", line="Walk", from_stop=name_b, to_stop=dest_name, travel_minutes=3, num_stops=0, fare=0),
+        ]
+        total_fare = sum(l.fare for l in legs)
 
         routes.append(
             CandidateRoute(
                 route_id="multi_metro_bus",
-                route_name="Metro Express + Feeder Bus",
+                route_name="Metro Trunk + DTC Feeder Bus",
                 route_type="OPTIMUM",
-                legs=[
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=name_a, travel_minutes=3, num_stops=0, fare=0),
-                    JourneyLeg(mode="METRO", line="Rapid Line", from_stop=name_a, to_stop=mid_stop_name, travel_minutes=leg1_mins, num_stops=max(2, int(half_dist * 0.8)), crowd_estimate="LOW", fare=25),
-                    JourneyLeg(mode="BUS", line="Feeder 502", from_stop=mid_stop_name, to_stop=name_b, travel_minutes=leg2_mins, num_stops=max(3, int(half_dist * 1.5)), crowd_estimate="MODERATE", fare=15),
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=name_b, to_stop=dest_name, travel_minutes=2, num_stops=0, fare=0),
-                ],
+                legs=legs,
                 base_travel_minutes=total_mins,
                 base_waiting_minutes=5,
                 transfers=1,
                 distance_km=dist_km,
-                fare=40,
-                mode_bus_ratio=0.5,
+                fare=total_fare,
+                mode_bus_ratio=0.4,
             )
         )
         return routes
 
-    def _generate_heuristic_candidates(self, orig_name: str, dest_name: str, dist_km: float) -> list[CandidateRoute]:
-        """Heuristic fallback planner generating 3 diverse routes for any arbitrary origin/destination."""
-        # 1. Quickest Direct / Metro Link
-        quick_speed = 32.0
-        quick_mins = max(10, int(round((dist_km / quick_speed) * 60.0)))
-        fare_quick = 25 + int(dist_km * 1.8)
+    def _generate_heuristic_candidates(
+        self, orig_name: str, dest_name: str, name_a: str, name_b: str, dist_km: float
+    ) -> list[CandidateRoute]:
+        """
+        Generates 3 distinct, realistic routes tailored to Delhi's transit geography:
+        1. QUICKEST: Express Metro line priority (fastest speed ~34 km/h)
+        2. OPTIMUM: Multi-Modal Metro + DTC AC Feeder Bus
+        3. CALM: Direct DTC AC/Electric Bus (least crowded, economic)
+        """
+        # Determine appropriate Metro lines based on Delhi geography
+        metro_line_name = "Metro Violet Line" if any(w in (orig_name + dest_name).lower() for w in ["okhla", "govindpuri", "iiit", "kalkaji", "nehru", "badarpur", "faridabad", "lajpat"]) else "Metro Yellow Line"
+        mid_hub = "Rajiv Chowk Interchange" if "rajiv" not in (orig_name + dest_name).lower() else "Central Secretariat"
 
-        # 2. Optimum Multi-Modal (Metro + Bus)
-        opt_dist1 = dist_km * 0.65
-        opt_dist2 = dist_km * 0.35
-        m_mins = max(7, int(round((opt_dist1 / 36.0) * 60.0)))
-        b_mins = max(8, int(round((opt_dist2 / 18.0) * 60.0)))
-        opt_mins = m_mins + b_mins + 5
-        fare_opt = 20 + int(dist_km * 1.4)
-
-        # 3. Calm / Direct Bus Line
-        bus_speed = 19.0
-        bus_mins = max(15, int(round((dist_km / bus_speed) * 60.0)))
-        fare_bus = 15 + int(dist_km * 1.0)
-
-        mid_hub = "Central Junction Interchange"
-
-        return [
-            CandidateRoute(
-                route_id="R_OPTIMUM",
-                route_name="Metro Express + Feeder Link",
-                route_type="OPTIMUM",
-                legs=[
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=f"{orig_name} Station", travel_minutes=3, num_stops=0, fare=0),
-                    JourneyLeg(mode="METRO", line="Metro Line 2", from_stop=f"{orig_name} Station", to_stop=mid_hub, travel_minutes=m_mins, num_stops=max(2, int(opt_dist1 * 0.8)), crowd_estimate="LOW", fare=20),
-                    JourneyLeg(mode="BUS", line="Bus Route 12B", from_stop=mid_hub, to_stop=f"{dest_name} Gate", travel_minutes=b_mins, num_stops=max(3, int(opt_dist2 * 1.6)), crowd_estimate="MODERATE", fare=15),
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=f"{dest_name} Gate", to_stop=dest_name, travel_minutes=2, num_stops=0, fare=0),
-                ],
-                base_travel_minutes=opt_mins,
-                base_waiting_minutes=4,
-                transfers=1,
-                distance_km=dist_km,
-                fare=fare_opt,
-                mode_bus_ratio=0.4,
-            ),
-            CandidateRoute(
-                route_id="R_QUICKEST",
-                route_name="Direct Express Metro",
-                route_type="QUICKEST",
-                legs=[
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=f"{orig_name} Metro", travel_minutes=4, num_stops=0, fare=0),
-                    JourneyLeg(mode="METRO", line="Purple Express", from_stop=f"{orig_name} Metro", to_stop=f"{dest_name} Metro", travel_minutes=quick_mins, num_stops=max(3, int(dist_km * 0.7)), crowd_estimate="HIGH", fare=fare_quick),
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=f"{dest_name} Metro", to_stop=dest_name, travel_minutes=3, num_stops=0, fare=0),
-                ],
-                base_travel_minutes=quick_mins + 7,
-                base_waiting_minutes=3,
-                transfers=0,
-                distance_km=dist_km,
-                fare=fare_quick,
-                mode_bus_ratio=0.0,
-            ),
-            CandidateRoute(
-                route_id="R_CALM",
-                route_name="Direct AC Bus Line",
-                route_type="CALM",
-                legs=[
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=f"{orig_name} Stop", travel_minutes=2, num_stops=0, fare=0),
-                    JourneyLeg(mode="BUS", line="DTC Route 44A", from_stop=f"{orig_name} Stop", to_stop=f"{dest_name} Stop", travel_minutes=bus_mins, num_stops=max(4, int(dist_km * 1.8)), crowd_estimate="LOW", fare=fare_bus),
-                    JourneyLeg(mode="WALK", line="Walk", from_stop=f"{dest_name} Stop", to_stop=dest_name, travel_minutes=2, num_stops=0, fare=0),
-                ],
-                base_travel_minutes=bus_mins + 4,
-                base_waiting_minutes=6,
-                transfers=0,
-                distance_km=dist_km,
-                fare=fare_bus,
-                mode_bus_ratio=1.0,
-            ),
+        # -------------------------------------------------------------
+        # 1. QUICKEST ROUTE (Express Metro Line)
+        # -------------------------------------------------------------
+        quick_speed = 34.0
+        m_direct_mins = max(15, int(round((dist_km / quick_speed) * 60.0)) + int(dist_km * 0.7))
+        fare_quick_leg = calculate_metro_fare(dist_km)
+        legs_quickest = [
+            JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=f"{name_a} Metro", travel_minutes=4, num_stops=0, fare=0),
+            JourneyLeg(mode="METRO", line=metro_line_name, from_stop=f"{name_a} Metro", to_stop=f"{name_b} Station", travel_minutes=m_direct_mins, num_stops=max(3, int(dist_km * 0.75)), crowd_estimate="MODERATE", fare=fare_quick_leg),
+            JourneyLeg(mode="WALK", line="Walk", from_stop=f"{name_b} Station", to_stop=dest_name, travel_minutes=3, num_stops=0, fare=0),
         ]
+        route_quickest = CandidateRoute(
+            route_id="R_QUICKEST",
+            route_name=f"Express {metro_line_name}",
+            route_type="QUICKEST",
+            legs=legs_quickest,
+            base_travel_minutes=m_direct_mins + 7,
+            base_waiting_minutes=3,
+            transfers=0,
+            distance_km=dist_km,
+            fare=sum(l.fare for l in legs_quickest),
+            mode_bus_ratio=0.0,
+        )
+
+        # -------------------------------------------------------------
+        # 2. OPTIMUM ROUTE (Metro Trunk + DTC AC Feeder Bus)
+        # -------------------------------------------------------------
+        opt_dist1 = round(dist_km * 0.65, 2)
+        opt_dist2 = round(dist_km * 0.35, 2)
+        m_mins = max(10, int(round((opt_dist1 / 34.0) * 60.0)) + int(opt_dist1 * 0.6))
+        b_mins = max(12, int(round((opt_dist2 / 18.0) * 60.0)) + int(opt_dist2 * 1.2))
+        opt_total_mins = m_mins + b_mins + 6
+
+        fare_opt_m = calculate_metro_fare(opt_dist1)
+        fare_opt_b = calculate_bus_fare(opt_dist2, is_ac=True)
+        legs_optimum = [
+            JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=f"{name_a} Metro", travel_minutes=3, num_stops=0, fare=0),
+            JourneyLeg(mode="METRO", line=metro_line_name, from_stop=f"{name_a} Metro", to_stop=mid_hub, travel_minutes=m_mins, num_stops=max(2, int(opt_dist1 * 0.7)), crowd_estimate="LOW", fare=fare_opt_m),
+            JourneyLeg(mode="BUS", line="DTC AC Route 502 / Feeder", from_stop=mid_hub, to_stop=f"{name_b} Bus Stop", travel_minutes=b_mins, num_stops=max(3, int(opt_dist2 * 1.5)), crowd_estimate="MODERATE", fare=fare_opt_b),
+            JourneyLeg(mode="WALK", line="Walk", from_stop=f"{name_b} Bus Stop", to_stop=dest_name, travel_minutes=2, num_stops=0, fare=0),
+        ]
+        route_optimum = CandidateRoute(
+            route_id="R_OPTIMUM",
+            route_name=f"{metro_line_name} + DTC AC Feeder",
+            route_type="OPTIMUM",
+            legs=legs_optimum,
+            base_travel_minutes=opt_total_mins,
+            base_waiting_minutes=4,
+            transfers=1,
+            distance_km=dist_km,
+            fare=sum(l.fare for l in legs_optimum),
+            mode_bus_ratio=0.35,
+        )
+
+        # -------------------------------------------------------------
+        # 3. CALM ROUTE (Direct DTC Electric / AC Bus)
+        # -------------------------------------------------------------
+        bus_speed = 17.5
+        bus_mins = max(20, int(round((dist_km / bus_speed) * 60.0)) + int(dist_km * 1.3))
+        fare_calm_bus = calculate_bus_fare(dist_km, is_ac=True)
+        legs_calm = [
+            JourneyLeg(mode="WALK", line="Walk", from_stop=orig_name, to_stop=f"{name_a} Bus Stand", travel_minutes=2, num_stops=0, fare=0),
+            JourneyLeg(mode="BUS", line="DTC Electric Route 410", from_stop=f"{name_a} Bus Stand", to_stop=f"{name_b} Bus Stand", travel_minutes=bus_mins, num_stops=max(5, int(dist_km * 1.6)), crowd_estimate="LOW", fare=fare_calm_bus),
+            JourneyLeg(mode="WALK", line="Walk", from_stop=f"{name_b} Bus Stand", to_stop=dest_name, travel_minutes=2, num_stops=0, fare=0),
+        ]
+        route_calm = CandidateRoute(
+            route_id="R_CALM",
+            route_name="Direct DTC Electric Bus (Route 410)",
+            route_type="CALM",
+            legs=legs_calm,
+            base_travel_minutes=bus_mins + 4,
+            base_waiting_minutes=5,
+            transfers=0,
+            distance_km=dist_km,
+            fare=sum(l.fare for l in legs_calm),
+            mode_bus_ratio=1.0,
+        )
+
+        return [route_optimum, route_quickest, route_calm]
+

@@ -8,6 +8,7 @@ routes, stop sequences, and transfer points for high-performance multi-modal rou
 from dataclasses import dataclass, field
 import math
 from pathlib import Path
+import re
 from typing import Optional
 import pandas as pd
 
@@ -30,6 +31,49 @@ class TransitRoute:
     mode: str  # "BUS" or "METRO"
     color: str
     stops_sequence: list[str] = field(default_factory=list)  # list of stop_ids in order
+
+
+# Curated GPS coordinates for major Delhi NCR landmarks, universities, hubs, and stations
+DELHI_LANDMARKS = {
+    "iiit delhi": (28.5457, 77.2732, "IIIT Delhi (Okhla)", "BUS"),
+    "iiitd": (28.5457, 77.2732, "IIIT Delhi (Okhla)", "BUS"),
+    "iiit": (28.5457, 77.2732, "IIIT Delhi (Okhla)", "BUS"),
+    "gb road": (28.6480, 77.2240, "GB Road / Shradhanand Marg", "BUS"),
+    "g.b. road": (28.6480, 77.2240, "GB Road / Shradhanand Marg", "BUS"),
+    "shradhanand marg": (28.6480, 77.2240, "Swami Shradhanand Marg", "BUS"),
+    "iit delhi": (28.5450, 77.1926, "IIT Delhi (Hauz Khas)", "METRO"),
+    "iit": (28.5450, 77.1926, "IIT Delhi (Hauz Khas)", "METRO"),
+    "dtu": (28.7501, 77.1177, "Delhi Technological University (Bawana)", "BUS"),
+    "nsut": (28.6096, 77.0378, "Netaji Subhas University of Technology (Dwarka)", "BUS"),
+    "connaught place": (28.6315, 77.2167, "Connaught Place (Rajiv Chowk)", "BUS"),
+    "cp": (28.6315, 77.2167, "Connaught Place (Rajiv Chowk)", "BUS"),
+    "kashmere gate": (28.6678, 77.2280, "Kashmere Gate ISBT & Interchange", "METRO"),
+    "rajiv chowk": (28.6328, 77.2195, "Rajiv Chowk Metro", "METRO"),
+    "aiims": (28.5672, 77.2100, "AIIMS New Delhi", "METRO"),
+    "hauz khas": (28.5432, 77.2064, "Hauz Khas Metro & Village", "METRO"),
+    "saket": (28.5204, 77.2014, "Saket District Centre", "METRO"),
+    "karol bagh": (28.6514, 77.1907, "Karol Bagh Market", "METRO"),
+    "chandni chowk": (28.6506, 77.2303, "Chandni Chowk / Old Delhi", "METRO"),
+    "new delhi railway station": (28.6429, 77.2191, "New Delhi Railway Station", "METRO"),
+    "ndls": (28.6429, 77.2191, "New Delhi Railway Station", "METRO"),
+    "old delhi railway station": (28.6562, 77.2301, "Old Delhi Railway Station", "METRO"),
+    "anand vihar": (28.6469, 77.3160, "Anand Vihar ISBT & Terminal", "METRO"),
+    "sarai kale khan": (28.5898, 77.2555, "Sarai Kale Khan ISBT / Nizamuddin", "BUS"),
+    "nizamuddin": (28.5898, 77.2555, "Hazrat Nizamuddin Railway Station", "BUS"),
+    "noida sector 18": (28.5708, 77.3260, "Noida Sector 18 (Atta Market)", "METRO"),
+    "okhla": (28.5450, 77.2730, "Okhla Industrial Area", "BUS"),
+    "nehru place": (28.5492, 77.2527, "Nehru Place Commercial Hub", "METRO"),
+    "lajpat nagar": (28.5677, 77.2433, "Lajpat Nagar Central Market", "METRO"),
+    "govindpuri": (28.5447, 77.2647, "Govindpuri Metro (Violet Line)", "METRO"),
+    "harkesh nagar": (28.5468, 77.2748, "Harkesh Nagar Okhla Metro", "METRO"),
+    "janakpuri west": (28.6294, 77.0777, "Janakpuri West Metro", "METRO"),
+    "dwarka sector 21": (28.5523, 77.0583, "Dwarka Sector 21 Terminal", "METRO"),
+    "rohini west": (28.7145, 77.1147, "Rohini West Metro", "METRO"),
+    "dhaula kuan": (28.5921, 77.1565, "Dhaula Kuan Interchange", "METRO"),
+    "india gate": (28.6129, 77.2295, "India Gate / Kartavya Path", "BUS"),
+    "central secretariat": (28.6145, 77.2119, "Central Secretariat", "METRO"),
+    "cyber city": (28.4950, 77.0890, "DLF Cyber City Gurgaon", "METRO"),
+}
 
 
 class GTFSNetwork:
@@ -280,36 +324,68 @@ class GTFSNetwork:
         return results[:limit]
 
     def find_nearest_stop(self, name_or_query: str) -> Optional[Stop]:
-        """Find best matching Stop object by exact name, substring, or word match."""
+        """Find best matching Stop object by landmark registry, exact name, or robust token match."""
         q = name_or_query.strip().lower()
         if not q:
             return None
 
-        # 1. Exact match in index
+        # 1. Landmark registry lookup (high precision GPS for Delhi NCR)
+        # Check exact key or match against landmark synonyms
+        for l_key, (l_lat, l_lon, l_name, l_mode) in DELHI_LANDMARKS.items():
+            if q == l_key or q == l_name.lower():
+                return Stop(
+                    stop_id=f"landmark_{l_key.replace(' ', '_')}",
+                    stop_name=l_name,
+                    lat=l_lat,
+                    lon=l_lon,
+                    mode=l_mode,
+                )
+
+        # Check if query contains landmark key as distinct whole words (e.g. "IIIT Delhi Campus")
+        for l_key, (l_lat, l_lon, l_name, l_mode) in DELHI_LANDMARKS.items():
+            pattern = rf"\b{re.escape(l_key)}\b"
+            if re.search(pattern, q):
+                return Stop(
+                    stop_id=f"landmark_{l_key.replace(' ', '_')}",
+                    stop_name=l_name,
+                    lat=l_lat,
+                    lon=l_lon,
+                    mode=l_mode,
+                )
+
+        # 2. Exact match in GTFS stop index
         if q in self.name_to_stop_ids:
             return self.stops[self.name_to_stop_ids[q][0]]
 
-        # 2. Substring match
+        # 3. Whole-word / token match against GTFS stops
+        q_tokens = set(re.findall(r"\w+", q))
+        generic_tokens = {"gate", "road", "marg", "chowk", "station", "stop", "terminal", "metro", "bus", "isbt", "delhi"}
+        meaningful_q_tokens = q_tokens - generic_tokens
+        if not meaningful_q_tokens:
+            meaningful_q_tokens = q_tokens
+
+        best_stop = None
+        best_score = 0
+
         for stop_name, sids in self.name_to_stop_ids.items():
-            if q in stop_name or stop_name in q:
-                return self.stops[sids[0]]
+            s_tokens = set(re.findall(r"\w+", stop_name))
+            # Exact phrase match in stop name
+            if q in stop_name:
+                score = 100 + len(q)
+            else:
+                overlap = meaningful_q_tokens.intersection(s_tokens)
+                if not overlap:
+                    continue
+                score = len(overlap) * 10 - len(s_tokens - meaningful_q_tokens)
 
-        # 3. Word-level fallback for composite names (e.g., 'GB Road', 'Kashmere Gate Metro')
-        words = [w for w in q.replace(".", " ").replace("-", " ").split() if len(w) >= 2]
-        for word in words:
-            if word in ("gate", "road", "marg", "chowk", "station", "stop", "terminal"):
-                continue  # skip generic words for primary matching
-            for stop_name, sids in self.name_to_stop_ids.items():
-                if word in stop_name:
-                    return self.stops[sids[0]]
+            if score > best_score:
+                best_score = score
+                best_stop = self.stops[sids[0]]
 
-        # 4. Final word fallback if still unmatched
-        for word in words:
-            if len(word) >= 3:
-                for stop_name, sids in self.name_to_stop_ids.items():
-                    if word in stop_name:
-                        return self.stops[sids[0]]
+        if best_stop and best_score >= 10:
+            return best_stop
 
+        # 4. Spatial proximity fallback: find closest known GTFS stop if query is unknown but has fallback
         return None
 
 
@@ -322,3 +398,14 @@ def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
     a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return round(R * c, 2)
+
+
+def get_transit_road_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """
+    Computes calibrated urban transit network distance in Delhi.
+    Delhi transit/road factor is ~1.30x straight-line Haversine distance.
+    """
+    haversine = haversine_distance_km(lat1, lon1, lat2, lon2)
+    road_dist = haversine * 1.30
+    return round(max(1.5, road_dist), 2)
+

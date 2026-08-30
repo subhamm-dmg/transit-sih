@@ -17,6 +17,7 @@ import {
   Minimize2,
 } from "lucide-react";
 import Map from "./components/Map";
+import GovDashboard from "./components/GovDashboard";
 
 /* ------------------------------------------------------------------ */
 /*  DESIGN TOKENS                                                      */
@@ -68,7 +69,7 @@ const crowdToNumber = {
   VERY_HIGH: 3,
 };
 
-function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
+function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon, badge = null) {
   const now = new Date();
   const arrival = new Date(now.getTime() + (apiRoute.eta_minutes || 0) * 60_000);
 
@@ -118,6 +119,7 @@ function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
     accent,
     accentSoft,
     Icon,
+    badge,
     mins: apiRoute.eta_minutes,
     arrive: arrival.toLocaleTimeString([], {
       hour: "2-digit",
@@ -131,7 +133,6 @@ function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
     reliability: apiRoute.reliability,
     crowdLevel: apiRoute.crowd_level,
     crowdConfidence: apiRoute.crowd_confidence,
-    // Preserve raw API fields for RouteCard display & compatibility
     eta_minutes: apiRoute.eta_minutes,
     crowd_level: apiRoute.crowd_level,
     delay_minutes: apiRoute.delay_minutes,
@@ -144,41 +145,63 @@ function toUiRoute(apiRoute, key, label, accent, accentSoft, Icon) {
 }
 
 function adaptApiResponse(data) {
-  const allRoutes = [data.recommended_route, ...data.alternatives];
+  const rawList = [data.recommended_route, ...(data.alternatives || [])].filter(Boolean);
 
-  const fastest = [...allRoutes].sort(
-    (a, b) => a.eta_minutes - b.eta_minutes
-  )[0];
+  // Group and deduplicate routes by unique transit characteristics (name + ETA + line)
+  const uniqueRoutes = [];
+  const seenSignatures = new Set();
+  for (const r of rawList) {
+    const legsSig = (r.legs || []).map(l => `${l.mode}:${l.line}`).join("->") || r.route_name;
+    const sig = `${r.route_name}_${r.eta_minutes}_${legsSig}`;
+    if (!seenSignatures.has(sig)) {
+      seenSignatures.add(sig);
+      uniqueRoutes.push(r);
+    }
+  }
 
-  const leastCrowded = [...allRoutes].sort(
-    (a, b) => a.crowd_score - b.crowd_score
-  )[0];
+  // If only 1 route or all routes are identical, return ONLY 1 card (OPTIMUM)
+  if (uniqueRoutes.length <= 1) {
+    const single = uniqueRoutes[0] || data.recommended_route;
+    return {
+      isSingleRoute: true,
+      routesList: [
+        toUiRoute(single, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST PICK")
+      ],
+      metadata: data.metadata,
+    };
+  }
+
+  // If multiple distinct routes exist:
+  // 1. Optimum (Violet)
+  // 2. Quickest (Amber)
+  // 3. Least Crowded (Teal)
+  let optRoute = uniqueRoutes.find(r => r.route_type === "OPTIMUM") || uniqueRoutes[0];
+  let quickRoute = uniqueRoutes.find(r => r.route_type === "QUICKEST" && r !== optRoute);
+  if (!quickRoute) {
+    const remaining = uniqueRoutes.filter(r => r !== optRoute);
+    quickRoute = remaining.sort((a, b) => (a.eta_minutes || 0) - (b.eta_minutes || 0))[0];
+  }
+
+  let calmRoute = uniqueRoutes.find(r => r.route_type === "CALM" && r !== optRoute && r !== quickRoute);
+  if (!calmRoute) {
+    const remaining = uniqueRoutes.filter(r => r !== optRoute && r !== quickRoute);
+    calmRoute = remaining[0];
+  }
+
+  const routesList = [];
+  if (optRoute) {
+    routesList.push(toUiRoute(optRoute, "optimum", "OPTIMUM", C.violet, C.violetSoft, Sparkles, "★ BEST PICK"));
+  }
+  if (quickRoute && quickRoute !== optRoute) {
+    routesList.push(toUiRoute(quickRoute, "quickest", "QUICKEST", C.amber, C.amberSoft, Zap));
+  }
+  if (calmRoute && calmRoute !== optRoute && calmRoute !== quickRoute) {
+    routesList.push(toUiRoute(calmRoute, "calm", "LEAST CROWDED", C.teal, C.tealSoft, Users));
+  }
 
   return {
-    quickest: toUiRoute(
-      fastest,
-      "quickest",
-      "Quickest",
-      C.amber,
-      C.amberSoft,
-      Zap
-    ),
-    calm: toUiRoute(
-      leastCrowded,
-      "calm",
-      "Least Crowded",
-      C.teal,
-      C.tealSoft,
-      Users
-    ),
-    optimum: toUiRoute(
-      data.recommended_route,
-      "optimum",
-      "Recommended",
-      C.violet,
-      C.violetSoft,
-      Sparkles
-    ),
+    isSingleRoute: routesList.length <= 1,
+    routesList,
     metadata: data.metadata,
   };
 }
@@ -698,13 +721,12 @@ function FieldRow({ icon, placeholder, value, onChange, onFocus, inputRef }) {
 /* ------------------------------------------------------------------ */
 /*  RESULTS SCREEN                                                     */
 /* ------------------------------------------------------------------ */
-function RouteCard({ option, isRecommended, onSelect }) {
-  const isOpt = isRecommended || option.route_type === "OPTIMUM";
-  const isQuick = option.route_type === "QUICKEST";
-  const accent = isOpt ? C.violet : isQuick ? C.amber : C.teal;
-  const accentSoft = isOpt ? C.violetSoft : isQuick ? C.amberSoft : C.tealSoft;
-  const Icon = isOpt ? Sparkles : isQuick ? Zap : Users;
-  const typeLabel = isOpt ? "OPTIMUM" : isQuick ? "QUICKEST" : "CALM";
+function RouteCard({ option, onSelect }) {
+  const accent = option.accent || C.violet;
+  const accentSoft = option.accentSoft || C.violetSoft;
+  const Icon = option.Icon || Sparkles;
+  const typeLabel = option.label || "OPTIMUM";
+  const badge = option.badge;
 
   return (
     <button
@@ -713,7 +735,7 @@ function RouteCard({ option, isRecommended, onSelect }) {
         textAlign: "left",
         width: "100%",
         background: C.surface,
-        border: `1px solid ${isOpt ? C.violet : C.line}`,
+        border: `1px solid ${badge ? accent : C.line}`,
         borderRadius: 16,
         padding: "16px 16px 14px",
         cursor: "pointer",
@@ -734,9 +756,9 @@ function RouteCard({ option, isRecommended, onSelect }) {
             <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: accent, letterSpacing: 0.3 }}>
               {typeLabel}
             </span>
-            {isOpt && (
-              <span style={{ fontSize: 9.5, fontFamily: "'IBM Plex Mono', monospace", color: C.violet, border: `1px solid ${C.violet}55`, borderRadius: 5, padding: "1px 5px" }}>
-                ★ ML PICK
+            {badge && (
+              <span style={{ fontSize: 9.5, fontFamily: "'IBM Plex Mono', monospace", color: accent, border: `1px solid ${accent}55`, borderRadius: 5, padding: "1px 5px" }}>
+                {badge}
               </span>
             )}
           </div>
@@ -773,29 +795,19 @@ function RouteCard({ option, isRecommended, onSelect }) {
 }
 
 function ResultsScreen({ from, to, recommendData, onBack, onSelect }) {
+  const routes = recommendData?.routesList || [];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <TopBar onBack={onBack} title="ML Route Options" subtitle={`${from} → ${to}`} />
+      <TopBar onBack={onBack} title="Transit Options" subtitle={`${from} → ${to}`} />
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
-        {recommendData?.optimum && (
+        {routes.map((option, idx) => (
           <RouteCard
-            option={recommendData.optimum}
-            isRecommended={true}
-            onSelect={() => onSelect(recommendData.optimum._raw || recommendData.optimum)}
+            key={option.key || idx}
+            option={option}
+            onSelect={() => onSelect(option._raw || option)}
           />
-        )}
-        {recommendData?.quickest && (
-          <RouteCard
-            option={recommendData.quickest}
-            onSelect={() => onSelect(recommendData.quickest._raw || recommendData.quickest)}
-          />
-        )}
-        {recommendData?.calm && (
-          <RouteCard
-            option={recommendData.calm}
-            onSelect={() => onSelect(recommendData.calm._raw || recommendData.calm)}
-          />
-        )}
+        ))}
         <div
           style={{
             fontSize: 11,
@@ -943,9 +955,10 @@ function TopBar({ onBack, title, subtitle, accent }) {
 /*  MAIN APP CONTAINER                                                 */
 /* ------------------------------------------------------------------ */
 export default function TransitApp() {
+  const [appMode, setAppMode] = useState("commuter"); // commuter | gov
   const [screen, setScreen] = useState("plan"); // plan | results | detail
-  const [from, setFrom] = useState("Connaught Place");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState("IIIT Delhi");
+  const [to, setTo] = useState("GB Road");
   const [departureTime, setDepartureTime] = useState(
     new Date().toTimeString().slice(0, 5)
   );
@@ -981,6 +994,7 @@ export default function TransitApp() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: payload,
+          signal: AbortSignal.timeout(10000),
         });
 
         const data = await response.json();
@@ -1010,23 +1024,7 @@ export default function TransitApp() {
   };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        minHeight: 640,
-        maxWidth: 420,
-        margin: "0 auto",
-        background: C.bg,
-        borderRadius: 24,
-        overflow: "hidden",
-        boxShadow: "0 30px 60px rgba(0,0,0,0.45)",
-        border: `1px solid ${C.line}`,
-        fontFamily: "'Inter', sans-serif",
-        display: "flex",
-        flexDirection: "column",
-        height: 680,
-      }}
-    >
+    <div style={{ width: "100%", minHeight: "100vh", background: "#0A0C13", padding: "16px 12px" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
         * { box-sizing: border-box; }
@@ -1041,43 +1039,134 @@ export default function TransitApp() {
         }
       `}</style>
 
-      <div key={screen} style={{ flex: 1, minHeight: 0 }}>
-        {screen === "plan" && (
-          <PlanScreen
-            from={from}
-            to={to}
-            setFrom={setFrom}
-            setTo={setTo}
-            departureTime={departureTime}
-            setDepartureTime={setDepartureTime}
-            onFindRoutes={handleFindRoutes}
-            loading={loading}
-            error={error}
-            isMapExpanded={isMapExpanded}
-            setIsMapExpanded={setIsMapExpanded}
-          />
-        )}
-        {screen === "results" && routes && (
-          <ResultsScreen
-            from={from}
-            to={to}
-            recommendData={routes}
-            onBack={() => setScreen("plan")}
-            onSelect={(route) => {
-              setSelectedRoute(route);
-              setScreen("detail");
-            }}
-          />
-        )}
-        {screen === "detail" && selectedRoute && (
-          <DetailScreen
-            route={selectedRoute}
-            onBack={() => setScreen("results")}
-            from={from}
-            to={to}
-          />
-        )}
+      {/* Top Application Mode Switcher Bar */}
+      <div
+        style={{
+          maxWidth: appMode === "gov" ? 1040 : 440,
+          margin: "0 auto 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 16,
+          padding: "4px",
+        }}
+      >
+        <button
+          onClick={() => setAppMode("commuter")}
+          style={{
+            padding: "9px 20px",
+            borderRadius: 12,
+            border: appMode === "commuter" ? `1px solid ${C.teal}` : `1px solid ${C.line}`,
+            background: appMode === "commuter" ? C.teal : C.surface,
+            color: appMode === "commuter" ? "#0A0D14" : C.textDim,
+            fontFamily: "'Space Grotesk', sans-serif",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            transition: "all 0.15s ease",
+            boxShadow: appMode === "commuter" ? "0 4px 12px rgba(61,214,186,0.2)" : "none",
+          }}
+        >
+          🧭 Commuter Journey App
+        </button>
+        <button
+          onClick={() => setAppMode("gov")}
+          style={{
+            padding: "9px 20px",
+            borderRadius: 12,
+            border: appMode === "gov" ? `1px solid ${C.amber}` : `1px solid ${C.line}`,
+            background: appMode === "gov" ? C.amber : C.surface,
+            color: appMode === "gov" ? "#0A0D14" : C.textDim,
+            fontFamily: "'Space Grotesk', sans-serif",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            transition: "all 0.15s ease",
+            boxShadow: appMode === "gov" ? "0 4px 12px rgba(255,170,44,0.2)" : "none",
+          }}
+        >
+          🏛️ Delhi Transit Authority (Gov)
+        </button>
       </div>
+
+      {/* Main Screen Content */}
+      {appMode === "gov" ? (
+        <div
+          style={{
+            maxWidth: 1040,
+            margin: "0 auto",
+            background: C.bg,
+            borderRadius: 20,
+            overflow: "hidden",
+            boxShadow: "0 30px 60px rgba(0,0,0,0.5)",
+            border: `1px solid ${C.line}`,
+          }}
+        >
+          <GovDashboard onBackToCommuter={() => setAppMode("commuter")} />
+        </div>
+      ) : (
+        <div
+          style={{
+            width: "100%",
+            minHeight: 640,
+            maxWidth: 420,
+            margin: "0 auto",
+            background: C.bg,
+            borderRadius: 24,
+            overflow: "hidden",
+            boxShadow: "0 30px 60px rgba(0,0,0,0.45)",
+            border: `1px solid ${C.line}`,
+            fontFamily: "'Inter', sans-serif",
+            display: "flex",
+            flexDirection: "column",
+            height: 680,
+          }}
+        >
+          <div key={screen} style={{ flex: 1, minHeight: 0 }}>
+            {screen === "plan" && (
+              <PlanScreen
+                from={from}
+                to={to}
+                setFrom={setFrom}
+                setTo={setTo}
+                departureTime={departureTime}
+                setDepartureTime={setDepartureTime}
+                onFindRoutes={handleFindRoutes}
+                loading={loading}
+                error={error}
+                isMapExpanded={isMapExpanded}
+                setIsMapExpanded={setIsMapExpanded}
+              />
+            )}
+            {screen === "results" && routes && (
+              <ResultsScreen
+                from={from}
+                to={to}
+                recommendData={routes}
+                onBack={() => setScreen("plan")}
+                onSelect={(route) => {
+                  setSelectedRoute(route);
+                  setScreen("detail");
+                }}
+              />
+            )}
+            {screen === "detail" && selectedRoute && (
+              <DetailScreen
+                route={selectedRoute}
+                onBack={() => setScreen("results")}
+                from={from}
+                to={to}
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

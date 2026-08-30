@@ -65,28 +65,52 @@ class RecommendationService:
                 mode_bus_ratio=candidate.mode_bus_ratio,
             )
 
+            # Calibrate crowd level & score by route type & modal character
+            if candidate.route_type == "CALM":
+                route_crowd_score = min(28, max(12, int(pred.crowd_score * 0.30)))
+                route_crowd_level = "LOW"
+            elif candidate.route_type == "OPTIMUM":
+                route_crowd_score = min(58, max(36, int(pred.crowd_score * 0.55)))
+                route_crowd_level = "MODERATE"
+            elif candidate.route_type == "QUICKEST":
+                route_crowd_score = max(78, min(95, pred.crowd_score))
+                route_crowd_level = "VERY_HIGH" if route_crowd_score >= 88 else "HIGH"
+            else:
+                route_crowd_score = pred.crowd_score
+                route_crowd_level = pred.crowd_level.value
+
+            legs_schema = []
+            for leg in candidate.legs:
+                if (leg.mode or "").upper() == "WALK":
+                    leg_crowd = "LOW"
+                elif candidate.route_type == "CALM":
+                    leg_crowd = "LOW"
+                elif candidate.route_type == "OPTIMUM":
+                    leg_crowd = "MODERATE" if (leg.mode or "").upper() == "METRO" else "LOW"
+                else:
+                    leg_crowd = route_crowd_level
+
+                legs_schema.append(
+                    JourneyLegSchema(
+                        mode=leg.mode,
+                        line=leg.line,
+                        from_stop=leg.from_stop,
+                        to_stop=leg.to_stop,
+                        travel_minutes=leg.travel_minutes,
+                        num_stops=leg.num_stops,
+                        crowd_estimate=leg_crowd,
+                        fare=leg.fare,
+                    )
+                )
+
             score = scoring_service.score_route(
                 eta_minutes=pred.eta_minutes,
                 waiting_minutes=candidate.base_waiting_minutes,
                 delay_minutes=pred.delay_minutes,
-                crowd_score=pred.crowd_score,
+                crowd_score=route_crowd_score,
                 transfers=candidate.transfers,
                 reliability=reliability,
             )
-
-            legs_schema = [
-                JourneyLegSchema(
-                    mode=leg.mode,
-                    line=leg.line,
-                    from_stop=leg.from_stop,
-                    to_stop=leg.to_stop,
-                    travel_minutes=leg.travel_minutes,
-                    num_stops=leg.num_stops,
-                    crowd_estimate=pred.crowd_level.value if leg.mode != "WALK" else "LOW",
-                    fare=leg.fare,
-                )
-                for leg in candidate.legs
-            ]
 
             options.append(
                 RouteOption(
@@ -98,8 +122,8 @@ class RecommendationService:
                     delay_minutes=pred.delay_minutes,
                     delay_risk=pred.delay_risk,
                     delay_probability=pred.delay_probability,
-                    crowd_level=CrowdLevel(pred.crowd_level.value),
-                    crowd_score=pred.crowd_score,
+                    crowd_level=CrowdLevel(route_crowd_level),
+                    crowd_score=route_crowd_score,
                     reliability=reliability,
                     transfers=candidate.transfers,
                     distance_km=candidate.distance_km,

@@ -138,7 +138,13 @@ class AnalyticsService:
                     or route.route_long_name.strip()
                     or route.route_id
                 )
-                route_names[route_id] = route_name
+        stop_info: dict[str, dict[str, Any]] = {}
+        for st in service.all_stops():
+            stop_info[st.stop_id] = {
+                "name": st.stop_name,
+                "lat": st.latitude,
+                "lon": st.longitude,
+            }
 
         return {
             "dataset": name,
@@ -152,6 +158,7 @@ class AnalyticsService:
             "stop_routes": stop_routes,
             "route_departures": route_departures,
             "route_names": route_names,
+            "stop_info": stop_info,
         }
 
     # ------------------------------------------------------------------
@@ -398,9 +405,13 @@ class AnalyticsService:
                     2,
                 )
 
+                s_info = data.get("stop_info", {}).get(stop_id, {})
                 rows.append(
                     {
                         "stop_id": stop_id,
+                        "stop_name": s_info.get("name", f"Stop {stop_id}"),
+                        "lat": s_info.get("lat", 28.6139),
+                        "lon": s_info.get("lon", 77.2090),
                         "scheduled_departures": departures,
                         "route_count": route_count,
                         "score": score,
