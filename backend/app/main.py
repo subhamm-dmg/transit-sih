@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.api import health, recommendations, routes
+from app.api import health, recommendations, routes, insights
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -32,6 +32,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(recommendations.router, prefix="/api")
 app.include_router(routes.router, prefix="/api")
+app.include_router(insights.router, prefix="/api")
 
 
 @app.exception_handler(ValidationError)

@@ -599,3 +599,75 @@ class GTFSService:
         )
 
         return results[:max_results]
+
+    # ------------------------------------------------------------------
+    # Read-only bulk accessors for government analytics.
+    # These are additive and do not alter existing routing behavior.
+    # ------------------------------------------------------------------
+
+    def all_stops(self) -> list[GTFSStop]:
+        """Return all loaded stops as a deterministic list."""
+        return list(self._stops.values())
+
+    def all_routes(self) -> list[GTFSRoute]:
+        """Return all loaded routes as a deterministic list."""
+        return list(self._routes.values())
+
+    def get_trip(self, trip_id: str) -> GTFSTrip | None:
+        """Return one trip by ID."""
+        return self._trips.get(trip_id)
+
+    def iter_stop_time_records(
+        self,
+    ) -> Iterator[tuple[str, str, int, str, str]]:
+        """
+        Iterate over stop-time records without copying the full dataset.
+
+        Yields:
+            (stop_id, trip_id, stop_sequence, arrival_time, departure_time)
+        """
+        for stop_id, records in self._stop_times.items():
+            for trip_id, sequence, arrival, departure in records:
+                yield (
+                    stop_id,
+                    trip_id,
+                    sequence,
+                    arrival,
+                    departure,
+                )
+
+    # ------------------------------------------------------------------
+    # Read-only bulk accessors for government analytics.
+    # These are additive and do not alter existing routing behavior.
+    # ------------------------------------------------------------------
+
+    def all_stops(self) -> list[GTFSStop]:
+        """Return all loaded stops as a deterministic list."""
+        return list(self._stops.values())
+
+    def all_routes(self) -> list[GTFSRoute]:
+        """Return all loaded routes as a deterministic list."""
+        return list(self._routes.values())
+
+    def get_trip(self, trip_id: str) -> GTFSTrip | None:
+        """Return one trip by ID."""
+        return self._trips.get(trip_id)
+
+    def iter_stop_time_records(
+        self,
+    ) -> Iterator[tuple[str, str, int, str, str]]:
+        """
+        Iterate over stop-time records without copying the full dataset.
+
+        Yields:
+            (stop_id, trip_id, stop_sequence, arrival_time, departure_time)
+        """
+        for stop_id, records in self._stop_times.items():
+            for trip_id, sequence, arrival, departure in records:
+                yield (
+                    stop_id,
+                    trip_id,
+                    sequence,
+                    arrival,
+                    departure,
+                )
