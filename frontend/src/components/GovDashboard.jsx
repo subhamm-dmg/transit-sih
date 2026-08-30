@@ -167,41 +167,83 @@ export default function GovDashboard({ onBackToCommuter }) {
     setTimeout(() => {
       if (simIntervention === "buses") {
         setSimResult({
-          title: "Fleet Augmentation (+20 Electric Buses on Ring Road)",
+          title: "Fleet Augmentation (+25 Electric Buses on Ring Road & Outer Ring Road)",
           delayReduction: "-22% Avg Delay",
           reliabilityGain: "+14.5% Schedule Reliability",
           crowdRelief: "-18% Peak Dwell Time",
           costEstimate: "₹1.8L / day operational",
-          insight: "Relieves major confluence pressure at Kashmere Gate and Sarai Kale Khan during 08:30–10:30 peak hours.",
+          insight: "Relieves major confluence pressure at Kashmere Gate, AIIMS, and Sarai Kale Khan during 08:30–10:30 peak hours.",
         });
       } else if (simIntervention === "signals") {
         setSimResult({
-          title: "Transit Signal Priority (TSP) at Key Concourse Hubs",
-          delayReduction: "-16% Junction Hold",
-          reliabilityGain: "+19.0% On-Time Arrivals",
-          crowdRelief: "4.2 min ETA gain per passenger",
-          costEstimate: "₹45k infrastructure setup",
-          insight: "Synchronizes bus lane priority lights at Dhaula Kuan & AIIMS Ring Road intersections.",
+          title: "Transit Signal Priority (TSP) at 8 Key Arterial Junctions",
+          delayReduction: "-19% Junction Hold",
+          reliabilityGain: "+18.0% On-Time Arrivals",
+          crowdRelief: "4.5 min ETA gain per commuter",
+          costEstimate: "₹55k infrastructure setup",
+          insight: "Synchronizes bus lane green lights at Dhaula Kuan, Ashram Flyover, and Vikas Marg intersections.",
+        });
+      } else if (simIntervention === "feeders") {
+        setSimResult({
+          title: "Dynamic Feeder Micro-Shuttles (Okhla / IIIT Delhi & Metro Hubs)",
+          delayReduction: "-16% First/Last Mile Delay",
+          reliabilityGain: "+13.2% Seamless Transfer",
+          crowdRelief: "-26% Feeder Wait Time",
+          costEstimate: "₹65k / day fleet lease",
+          insight: "Balances Violet Line & Magenta Line transfers connecting Govindpuri, Okhla Phase III, and Nehru Place.",
+        });
+      } else if (simIntervention === "brt") {
+        setSimResult({
+          title: "Dedicated Bus Rapid Transit (BRT) Lane on Vikas Marg & Mathura Road",
+          delayReduction: "-28% Peak Bus Delay",
+          reliabilityGain: "+22.4% Schedule Adherence",
+          crowdRelief: "+40% Passenger Throughput",
+          costEstimate: "₹1.2L lane demarcation & cameras",
+          insight: "Increases average commercial bus speeds from 17.5 km/h to 28.0 km/h on Trans-Yamuna corridors.",
+        });
+      } else if (simIntervention === "pricing") {
+        setSimResult({
+          title: "20% Off-Peak Fare Incentive (11:00 AM – 04:00 PM)",
+          delayReduction: "-12% Morning Peak Load",
+          reliabilityGain: "+9.8% Network Capacity Balance",
+          crowdRelief: "14,200 Daily Commuters Shifted",
+          costEstimate: "Revenue Neutral (via increased ridership)",
+          insight: "Smooths out peak demand spikes on the Kashmere Gate – Rajiv Chowk – Central Secretariat trunk line.",
+        });
+      } else if (simIntervention === "metro") {
+        setSimResult({
+          title: "DMRC Peak Frequency Boost (2.5 min Headways on Yellow & Violet Lines)",
+          delayReduction: "-24% Platform Congestion",
+          reliabilityGain: "+16.8% Transit Reliability",
+          crowdRelief: "-22% On-Board Train Density",
+          costEstimate: "₹2.4L / day energy & crew dispatch",
+          insight: "Eliminates platform wait queues at Rajiv Chowk, Kashmere Gate, and Central Secretariat interchanges.",
         });
       } else {
         setSimResult({
-          title: "Dynamic Feeder Micro-Shuttles (Okhla / IIIT Delhi)",
-          delayReduction: "-14% First/Last Mile Delay",
-          reliabilityGain: "+11.2% Seamless Transfer",
-          crowdRelief: "-24% Feeder Wait Time",
-          costEstimate: "₹60k / day fleet lease",
-          insight: "Balances Violet Line & Magenta Line transfers connecting Govindpuri, Okhla Estate, and Nehru Place.",
+          title: "Standard Operational Timetable Active",
+          delayReduction: "Normal Baseline",
+          reliabilityGain: "88% Schedule Adherence",
+          crowdRelief: "Baseline Load",
+          costEstimate: "Standard Operational Budget",
+          insight: "Monitoring real-time telemetry across Delhi NCR corridors.",
         });
       }
       setIsSimulating(false);
-    }, 500);
+    }, 450);
   };
 
   const defaultCorridors = [
-    { id: "R9", name: "Ring Road Arterial Express", demand: 14200, delay: 6, reliability: 88, crowd: 86, type: "Optimal Trunk" },
+    { id: "R9", name: "Ring Road High-Frequency Arterial", demand: 14200, delay: 6, reliability: 88, crowd: 86, type: "Optimal Trunk" },
     { id: "R6", name: "Kashmere Gate – Connaught Place Central", demand: 18900, delay: 4, reliability: 94, crowd: 91, type: "Core Metro Trunk" },
     { id: "R3", name: "South Delhi Okhla – Hauz Khas Feeder", demand: 9800, delay: 5, reliability: 85, crowd: 72, type: "Tech Feeder" },
     { id: "R12", name: "East-West Trans-Yamuna Connector", demand: 12400, delay: 7, reliability: 83, crowd: 68, type: "Cross-City" },
+    { id: "R15", name: "Outer Ring Road Expressway & Airport Link", demand: 16300, delay: 5, reliability: 90, crowd: 82, type: "Express Arterial" },
+    { id: "R21", name: "Mehrauli-Badarpur (MB) Road Tech Corridor", demand: 11700, delay: 8, reliability: 81, crowd: 79, type: "Suburban Feeder" },
+    { id: "R28", name: "Mathura Road – Ashram Flyover Concourse", demand: 15800, delay: 7, reliability: 84, crowd: 89, type: "Heavy Commuter Trunk" },
+    { id: "R34", name: "GT Karnal Road Inter-State Arterial", demand: 13100, delay: 6, reliability: 86, crowd: 74, type: "Regional Connector" },
+    { id: "R40", name: "Dwarka Sub-City – Janakpuri West Feeder", demand: 10500, delay: 3, reliability: 92, crowd: 65, type: "Residential Feeder" },
+    { id: "R52", name: "Vikas Marg Trans-Yamuna Commercial Trunk", demand: 17400, delay: 9, reliability: 79, crowd: 93, type: "High Congestion Arterial" },
   ];
 
   const corridorList = corridors.length > 0 ? corridors : defaultCorridors;
@@ -501,19 +543,21 @@ export default function GovDashboard({ onBackToCommuter }) {
               background: C.surface,
               borderRadius: 12,
               border: `1px solid ${C.line}`,
+              display: "flex",
+              flexDirection: "column",
               overflow: "hidden",
             }}
           >
             <div style={{ padding: "16px 20px", borderBottom: `1px solid ${C.line}` }}>
               <div style={{ fontWeight: 600, fontSize: 14, color: C.text }}>
-                High-Volume Transit Corridors
+                High-Volume Transit Corridors ({corridorList.length})
               </div>
               <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 1 }}>
-                Ridership demand, delay index, and schedule reliability metrics
+                Ridership demand, delay index, and schedule reliability metrics (scrollable)
               </div>
             </div>
 
-            <div>
+            <div style={{ maxHeight: 380, overflowY: "auto" }}>
               {corridorList.map((corridor, idx) => (
                 <div
                   key={corridor.id || idx}
@@ -576,15 +620,18 @@ export default function GovDashboard({ onBackToCommuter }) {
                   Policy Intervention Simulator
                 </span>
               </div>
-              <p style={{ fontSize: 12, color: C.textDim, lineHeight: 1.5, margin: "0 0 16px" }}>
+              <p style={{ fontSize: 12, color: C.textDim, lineHeight: 1.5, margin: "0 0 14px" }}>
                 Test transit management decisions across the Delhi network prior to field implementation.
               </p>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto", paddingRight: 4 }}>
                 {[
-                  { id: "buses", label: "Deploy +20 Electric Buses on Ring Road" },
-                  { id: "signals", label: "Transit Signal Priority at 6 Arterial Junctions" },
+                  { id: "buses", label: "Deploy +25 Electric Buses on Ring Road & Outer Ring" },
+                  { id: "signals", label: "Transit Signal Priority (TSP) at 8 Arterial Junctions" },
                   { id: "feeders", label: "Dynamic Feeder Shuttles at Okhla / IIIT Hub" },
+                  { id: "brt", label: "Dedicated Bus Rapid Transit (BRT) Lane (Vikas Marg)" },
+                  { id: "pricing", label: "20% Off-Peak Fare Incentive (11 AM – 4 PM)" },
+                  { id: "metro", label: "DMRC Peak Frequency Boost (2.5 min Headways)" },
                 ].map((opt) => (
                   <label
                     key={opt.id}
@@ -592,12 +639,12 @@ export default function GovDashboard({ onBackToCommuter }) {
                       display: "flex",
                       alignItems: "center",
                       gap: 10,
-                      padding: "10px 14px",
+                      padding: "8px 12px",
                       borderRadius: 8,
                       background: simIntervention === opt.id ? C.surfaceElevated : "transparent",
                       border: `1px solid ${simIntervention === opt.id ? C.amber : C.line}`,
                       cursor: "pointer",
-                      fontSize: 12.5,
+                      fontSize: 12,
                       color: simIntervention === opt.id ? C.text : C.textDim,
                     }}
                   >
@@ -614,7 +661,7 @@ export default function GovDashboard({ onBackToCommuter }) {
               </div>
             </div>
 
-            <div style={{ marginTop: 18 }}>
+            <div style={{ marginTop: 14 }}>
               <button
                 onClick={handleRunSimulation}
                 disabled={isSimulating}

@@ -81,13 +81,103 @@ class GovernmentService:
                 score=84,
                 path=["anand_vihar", "laxmi_nagar", "ito", "rajiv_chowk", "karol_bagh"],
             ),
+            CorridorMetrics(
+                id="R15",
+                name="Outer Ring Road Expressway & Airport Link",
+                color="teal",
+                time=39,
+                demand=16300,
+                crowd=82,
+                delay=5,
+                reliability=90,
+                revenue=540000,
+                transfers=1,
+                type="EXPRESS ARTERIAL",
+                score=91,
+                path=["janakpuri_west", "iit_delhi", "nehru_place", "kalkaji_mandir", "botanical_garden"],
+            ),
+            CorridorMetrics(
+                id="R21",
+                name="Mehrauli-Badarpur (MB) Road Tech Corridor",
+                color="purple",
+                time=48,
+                demand=11700,
+                crowd=79,
+                delay=8,
+                reliability=81,
+                revenue=370000,
+                transfers=1,
+                type="SUBURBAN FEEDER",
+                score=83,
+                path=["saket", "batra_hospital", "tughlakabad", "badarpur_border"],
+            ),
+            CorridorMetrics(
+                id="R28",
+                name="Mathura Road – Ashram Flyover Concourse",
+                color="amber",
+                time=34,
+                demand=15800,
+                crowd=89,
+                delay=7,
+                reliability=84,
+                revenue=510000,
+                transfers=1,
+                type="HEAVY COMMUTER TRUNK",
+                score=88,
+                path=["nizamuddin", "ashram", "friends_colony", "apollo_hospital", "sarita_vihar"],
+            ),
+            CorridorMetrics(
+                id="R34",
+                name="GT Karnal Road Inter-State Arterial",
+                color="blue",
+                time=52,
+                demand=13100,
+                crowd=74,
+                delay=6,
+                reliability=86,
+                revenue=420000,
+                transfers=0,
+                type="REGIONAL CONNECTOR",
+                score=85,
+                path=["kashmere_gate", "azadpur", "jahangirpuri", "narela_terminal"],
+            ),
+            CorridorMetrics(
+                id="R40",
+                name="Dwarka Sub-City – Janakpuri West Feeder",
+                color="teal",
+                time=31,
+                demand=10500,
+                crowd=65,
+                delay=3,
+                reliability=92,
+                revenue=330000,
+                transfers=1,
+                type="RESIDENTIAL FEEDER",
+                score=89,
+                path=["dwarka_sec_21", "dwarka_mor", "uttam_nagar", "janakpuri_west"],
+            ),
+            CorridorMetrics(
+                id="R52",
+                name="Vikas Marg Trans-Yamuna Commercial Trunk",
+                color="coral",
+                time=33,
+                demand=17400,
+                crowd=93,
+                delay=9,
+                reliability=79,
+                revenue=580000,
+                transfers=0,
+                type="HIGH CONGESTION ARTERIAL",
+                score=82,
+                path=["anand_vihar", "preet_vihar", "laxmi_nagar", "ito", "delhi_gate"],
+            ),
         ]
 
     def get_overview(self) -> GovOverviewResponse:
         return GovOverviewResponse(
             delay_hotspots=8,
             high_demand_routes=12,
-            critical_corridors=5,
+            critical_corridors=10,
             network_load_pct=74,
             avg_delay_min=7,
             peak_demand_per_hour=612,
@@ -119,25 +209,25 @@ class GovernmentService:
             GovAlert(
                 id="ALT-1",
                 priority="HIGH",
-                title="Hampankatta corridor approaching critical capacity",
+                title="Ring Road / Kashmere Gate corridor approaching critical capacity",
                 description="Passenger load is predicted to exceed 88% during the morning peak window. Boarding dwell times increasing.",
                 corridor="R9",
-                suggested_action="Deploy 2 feeder buses and increase headway frequency by 20%.",
+                suggested_action="Deploy 20 feeder buses and increase headway frequency by 20%.",
             ),
             GovAlert(
                 id="ALT-2",
                 priority="MEDIUM",
-                title="Route 3 delay probability increased to 78%",
-                description="Congestion choke point detected near Central Interchange; estimated +11 min delay.",
-                corridor="R3",
-                suggested_action="Divert non-express demand to Route 6 Coastal Corridor.",
+                title="Vikas Marg Trans-Yamuna delay probability increased to 78%",
+                description="Congestion choke point detected near ITO Bridge; estimated +11 min delay.",
+                corridor="R52",
+                suggested_action="Activate dynamic signal priority at ITO and Laxmi Nagar intersections.",
             ),
             GovAlert(
                 id="ALT-3",
                 priority="LOW",
-                title="Outer Sector Link 12 recovering smoothly",
-                description="Demand normalized to 41% load with 96% schedule reliability.",
-                corridor="R12",
+                title="Outer Ring Road Expressway Line 15 operating optimally",
+                description="Demand normalized to 48% load with 95% schedule reliability.",
+                corridor="R15",
                 suggested_action="Maintain standard operational timetable.",
             ),
         ]
@@ -150,26 +240,41 @@ class GovernmentService:
         before_load = corridor.crowd
         before_delay = corridor.delay
 
-        if action_type == "frequency":
-            after_load = max(35, before_load - 19)
-            after_delay = max(1, before_delay - 3)
-            impact = f"Headway reduced from 10m to 6m. Crowding drops by {before_load - after_load}%."
-            roi = 8.8
-        elif action_type == "deploy_bus":
-            after_load = max(35, before_load - 14)
+        if action_type in ("deploy_bus", "buses"):
+            after_load = max(30, before_load - 18)
             after_delay = max(1, before_delay - 4)
-            impact = f"2 additional fleet units deployed. Delay reduced from {before_delay}m to {after_delay}m."
-            roi = 9.2
-        elif action_type == "reroute":
-            after_load = max(35, before_load - 11)
+            impact = f"+25 Electric Buses deployed on {corridor.name}. Peak dwell time reduced by 18% and avg delay cut to {after_delay}m."
+            roi = 9.4
+        elif action_type in ("signal_priority", "signals"):
+            after_load = max(30, before_load - 11)
+            after_delay = max(1, before_delay - 3)
+            impact = f"Transit Signal Priority (TSP) activated at key junctions. Average delay reduced from {before_delay}m to {after_delay}m with 19% on-time gains."
+            roi = 9.1
+        elif action_type in ("feeder_shuttles", "feeders"):
+            after_load = max(30, before_load - 24)
+            after_delay = max(1, before_delay - 3)
+            impact = f"Dynamic first/last-mile shuttles deployed at Okhla / Tech Hubs. Commuter wait times drop by 24%."
+            roi = 8.7
+        elif action_type in ("brt_lane", "brt"):
+            after_load = max(30, before_load - 20)
+            after_delay = max(1, before_delay - 5)
+            impact = f"Dedicated Bus Rapid Transit (BRT) lane enforced. Average bus speed improves from 17 km/h to 27 km/h."
+            roi = 9.6
+        elif action_type in ("offpeak_discount", "pricing"):
+            after_load = max(30, before_load - 15)
             after_delay = max(1, before_delay - 2)
-            impact = f"15% passenger demand dynamically guided to parallel line. Network load rebalanced."
-            roi = 7.9
+            impact = f"20% off-peak fare incentive applied (11 AM - 4 PM). Successfully shifted 14,000 peak commuters to off-peak slots."
+            roi = 8.5
+        elif action_type in ("metro_frequency", "metro"):
+            after_load = max(30, before_load - 22)
+            after_delay = max(1, before_delay - 3)
+            impact = f"Peak headway boosted to 2.5 min intervals on DMRC trunk lines. Station platform crowding relieved by 22%."
+            roi = 9.8
         else:
             after_load = before_load
             after_delay = before_delay
-            impact = "Action acknowledged. Monitoring corridor metrics."
-            roi = 5.0
+            impact = f"Operational action '{action_type}' applied to {corridor.name}."
+            roi = 7.5
 
         return SimulateActionResponse(
             action_type=action_type,
