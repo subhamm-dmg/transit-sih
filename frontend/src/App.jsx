@@ -929,25 +929,6 @@ function DetailScreen({ route, onBack, from, to }) {
           ))}
         </div>
       </div>
-
-      <div style={{ padding: 16, borderTop: `1px solid ${C.line}`, background: C.surface }}>
-        <button
-          style={{
-            width: "100%",
-            padding: "15px 0",
-            borderRadius: 14,
-            border: "none",
-            background: accent,
-            color: "#12141C",
-            fontFamily: "'Space Grotesk', sans-serif",
-            fontWeight: 700,
-            fontSize: 15,
-            cursor: "pointer",
-          }}
-        >
-          Start Journey
-        </button>
-      </div>
     </div>
   );
 }
