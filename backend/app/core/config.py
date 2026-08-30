@@ -20,42 +20,29 @@ except ImportError:
 
 
 class Settings:
-    """
-    Central place for all configuration values.
+    """Central place for all configuration values."""
 
-    Read in __init__ (not as class-level attributes) so each Settings()
-    instantiation picks up the current environment - important for tests
-    that need to flip a mode (e.g. ROUTING_MODE) within one process via
-    monkeypatch + get_settings.cache_clear(). Real app startup is
-    unaffected either way, since .env is loaded once, before the first
-    Settings() is created.
-    """
+    APP_NAME: str = os.getenv("APP_NAME", "transit-sih-backend")
+    ENV: str = os.getenv("ENV", "development")
 
-    def __init__(self) -> None:
-        self.APP_NAME: str = os.getenv("APP_NAME", "transit-sih-backend")
-        self.ENV: str = os.getenv("ENV", "development")
+    # CORS - local frontend dev servers
+    CORS_ORIGINS: list[str] = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173",
+    ).split(",")
 
-        # CORS - local frontend dev servers
-        self.CORS_ORIGINS: list[str] = os.getenv(
-            "CORS_ORIGINS",
-            "http://localhost:3000,http://localhost:5173",
-        ).split(",")
+    # Feature flags for swapping mock adapters -> real integrations later.
+    # Everything defaults to "mock" so the backend works fully offline.
+    ROUTING_MODE: str = os.getenv("ROUTING_MODE", "mock")
+    PREDICTION_MODE: str = os.getenv("PREDICTION_MODE", "mock")
+    TRAFFIC_MODE: str = os.getenv("TRAFFIC_MODE", "mock")
+    WEATHER_MODE: str = os.getenv("WEATHER_MODE", "mock")
 
-        # Feature flags for swapping mock adapters -> real integrations later.
-        # Everything defaults to "mock" so the backend works fully offline.
-        self.ROUTING_MODE: str = os.getenv("ROUTING_MODE", "mock")
-        self.PREDICTION_MODE: str = os.getenv("PREDICTION_MODE", "mock")
-        self.TRAFFIC_MODE: str = os.getenv("TRAFFIC_MODE", "mock")
-        self.WEATHER_MODE: str = os.getenv("WEATHER_MODE", "mock")
-
-        # Placeholders for tomorrow's real integrations. Never hardcode keys;
-        # these just read from env and stay unset (None) tonight.
-        self.WEATHER_API_KEY: str | None = os.getenv("WEATHER_API_KEY")
-        self.TRAFFIC_API_KEY: str | None = os.getenv("TRAFFIC_API_KEY")
-        self.GTFS_DATA_PATH: str | None = os.getenv("GTFS_DATA_PATH")
-        # Not read anywhere yet - GoogleRoutesProvider is a stub. Placeholder
-        # only, so the env var name is settled when that provider is built.
-        self.GOOGLE_ROUTES_API_KEY: str | None = os.getenv("GOOGLE_ROUTES_API_KEY")
+    # Placeholders for tomorrow's real integrations. Never hardcode keys;
+    # these just read from env and stay unset (None) tonight.
+    WEATHER_API_KEY: str | None = os.getenv("WEATHER_API_KEY")
+    TRAFFIC_API_KEY: str | None = os.getenv("TRAFFIC_API_KEY")
+    GTFS_DATA_PATH: str | None = os.getenv("GTFS_DATA_PATH")
 
 
 @lru_cache
