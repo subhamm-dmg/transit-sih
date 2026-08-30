@@ -1,26 +1,24 @@
 """
-RoutingService — generates candidate journeys between two stops.
+RoutingService — generates candidate journeys from the Delhi DTC GTFS feed.
 
-Tonight this uses a small, deterministic, hardcoded mock transit network
-(stops + routes + travel/wait times + transfers). No real routing
-algorithm, no GTFS parsing.
+GTFSService owns data loading and direct-trip discovery.
+RoutingService converts GTFS results into CandidateRoute objects.
 
-Swap-out plan for tomorrow:
-    Replace `_MOCK_STOPS` / `_MOCK_ROUTES` and `get_candidate_routes()`
-    with GTFS-based lookups. The public method signatures below are the
-    contract the rest of the app (API layer, scoring) depends on — keep
-    them stable and the rest of the system won't need to change.
+The public get_candidate_routes() contract is intentionally stable so
+RecommendationService and the API layer do not need to change.
 """
 
 from dataclasses import dataclass
+
+from app.services.gtfs_service import GTFSService
 
 
 @dataclass(frozen=True)
 class MockLeg:
     """One leg of a candidate journey."""
 
-    mode: str  # e.g. "BUS", "METRO"
-    line: str  # e.g. "500D", "Purple Line"
+    mode: str
+    line: str
     travel_minutes: int
 
 
@@ -36,121 +34,119 @@ class CandidateRoute:
     transfers: int
 
 
-# ---------------------------------------------------------------------------
-# Mock transit network
-# ---------------------------------------------------------------------------
-# A handful of well-known Bengaluru-ish stop names so demo output looks
-# sensible. Purely illustrative — replace with real GTFS stops tomorrow.
-
-_MOCK_STOPS: set[str] = {
-    "majestic",
-    "indiranagar",
-    "koramangala",
-    "whitefield",
-    "electronic city",
-    "mg road",
-    "silk board",
-    "hebbal",
-    "yeshwanthpur",
-    "btm layout",
-}
-
-# Candidate routes are keyed by a normalized (from, to) pair.
-# Each entry is a list of CandidateRoute objects - the small "network".
-_MOCK_ROUTES: dict[tuple[str, str], list[CandidateRoute]] = {
-    ("majestic", "indiranagar"): [
-        CandidateRoute(
-            route_id="R1",
-            route_name="Bus 500D",
-            legs=[MockLeg(mode="BUS", line="500D", travel_minutes=35)],
-            base_travel_minutes=35,
-            base_waiting_minutes=3,
-            transfers=0,
-        ),
-        CandidateRoute(
-            route_id="R2",
-            route_name="Metro + Bus",
-            legs=[
-                MockLeg(mode="METRO", line="Purple Line", travel_minutes=22),
-                MockLeg(mode="BUS", line="201", travel_minutes=14),
-            ],
-            base_travel_minutes=36,
-            base_waiting_minutes=5,
-            transfers=1,
-        ),
-        CandidateRoute(
-            route_id="R3",
-            route_name="Metro + Walk",
-            legs=[MockLeg(mode="METRO", line="Purple Line", travel_minutes=25)],
-            base_travel_minutes=25,
-            base_waiting_minutes=6,
-            transfers=0,
-        ),
-    ],
-}
-
-# Generic fallback network used for any (from, to) pair not explicitly
-# defined above, so the demo never dead-ends on an unknown stop pair.
-_FALLBACK_ROUTES: list[CandidateRoute] = [
-    CandidateRoute(
-        route_id="R1",
-        route_name="Direct Bus",
-        legs=[MockLeg(mode="BUS", line="Express", travel_minutes=40)],
-        base_travel_minutes=40,
-        base_waiting_minutes=4,
-        transfers=0,
-    ),
-    CandidateRoute(
-        route_id="R2",
-        route_name="Metro + Bus",
-        legs=[
-            MockLeg(mode="METRO", line="Green Line", travel_minutes=20),
-            MockLeg(mode="BUS", line="Feeder", travel_minutes=15),
-        ],
-        base_travel_minutes=35,
-        base_waiting_minutes=6,
-        transfers=1,
-    ),
-]
-
-
 class RouteNotFoundError(Exception):
-    """Raised when no candidate route can be generated for the request."""
+    """Raised when no candidate route can be generated."""
 
 
 class RoutingService:
-    """Generates candidate journeys for a given origin/destination pair."""
+    """Generates candidate journeys using Delhi DTC GTFS data."""
+
+    def __init__(
+        self,
+        gtfs_service: GTFSService | None = None,
+    ) -> None:
+        self.gtfs_service = gtfs_service or GTFSService()
 
     def known_stops(self) -> set[str]:
-        return set(_MOCK_STOPS)
+        """Return all known Delhi DTC stop names."""
+        return {
+            stop.stop_name.lower()
+            for stop in self.gtfs_service._stops.values()
+        }
 
-    def get_candidate_routes(self, origin: str, destination: str) -> list[CandidateRoute]:
+    def get_candidate_routes(
+        self,
+        origin: str,
+        destination: str,
+    ) -> list[CandidateRoute]:
         """
-        Return candidate routes between origin and destination.
+        Return direct DTC candidate routes between two stops.
 
-        Tonight: looks up a small static table, falling back to a generic
-        two-option network for any unseen stop pair. This keeps the demo
-        working for arbitrary stop names typed by judges.
+        GTFSService discovers scheduled direct trips. This method converts
+        those trips into the CandidateRoute contract used by the rest of
+        the backend.
+
+        Routes are deduplicated by user-facing route name so multiple
+        GTFS route IDs representing the same service are not displayed
+        as duplicate alternatives.
         """
-        key = (origin.strip().lower(), destination.strip().lower())
 
-        if key[0] == key[1]:
-            raise RouteNotFoundError("Origin and destination must be different stops")
+        if origin.strip().lower() == destination.strip().lower():
+            raise RouteNotFoundError(
+                "Origin and destination must be different stops"
+            )
 
-        routes = _MOCK_ROUTES.get(key)
-        if routes:
-            return routes
+        trips = self.gtfs_service.find_direct_trips_by_name(
+            origin,
+            destination,
+            max_results=10,
+        )
 
-        # Fall back to generic mock routes so any input still returns
-        # something sensible during the demo.
-        return _FALLBACK_ROUTES
+        if not trips:
+            raise RouteNotFoundError(
+                f"No direct DTC routes found from '{origin}' to '{destination}'"
+            )
+
+        candidates: list[CandidateRoute] = []
+
+        # Avoid showing duplicate user-facing route names.
+        seen_route_names: set[str] = set()
+
+        for trip in trips:
+            route_name = trip.route_short_name.strip()
+
+            if not route_name:
+                route_name = trip.route_long_name.strip()
+
+            if not route_name:
+                route_name = f"DTC Route {trip.route_id}"
+
+            normalized_name = route_name.casefold()
+
+            if normalized_name in seen_route_names:
+                continue
+
+            seen_route_names.add(normalized_name)
+
+            candidates.append(
+                CandidateRoute(
+                    route_id=trip.route_id,
+                    route_name=route_name,
+                    legs=[
+                        MockLeg(
+                            mode="BUS",
+                            line=route_name,
+                            travel_minutes=trip.travel_minutes,
+                        )
+                    ],
+                    base_travel_minutes=trip.travel_minutes,
+                    base_waiting_minutes=0,
+                    transfers=0,
+                )
+            )
+
+        return candidates
 
     def get_route_by_id(
-        self, origin: str, destination: str, route_id: str
+        self,
+        origin: str,
+        destination: str,
+        route_id: str,
     ) -> CandidateRoute | None:
-        """Return a single candidate route by id for the given pair, or None."""
+        """Return one GTFS-backed candidate route by route ID."""
+
         routes = self.get_candidate_routes(origin, destination)
+
         for route in routes:
             if route.route_id == route_id:
                 return route
+
         return None
+
+
+__all__ = [
+    "CandidateRoute",
+    "MockLeg",
+    "RouteNotFoundError",
+    "RoutingService",
+]

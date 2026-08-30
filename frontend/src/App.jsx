@@ -68,6 +68,130 @@ function seededRandom(seed) {
   };
 }
 
+function backendRouteToFrontendRoute(route, kind) {
+  const crowdMap = {
+    LOW: "low",
+    MODERATE: "medium",
+    HIGH: "high",
+    VERY_HIGH: "high",
+  };
+
+  const crowd = crowdMap[route.crowd_level] || "medium";
+
+  const accentMap = {
+    quickest: { accent: C.amber, accentSoft: C.amberSoft, Icon: Zap },
+    calm: { accent: C.teal, accentSoft: C.tealSoft, Icon: Users },
+    optimum: { accent: C.violet, accentSoft: C.violetSoft, Icon: Sparkles },
+  };
+
+  const visual = accentMap[kind];
+
+  const totalMinutes =
+    route.eta_minutes +
+    route.waiting_minutes;
+
+  const now = new Date();
+  const arrive = new Date(
+    now.getTime() + totalMinutes * 60000
+  );
+
+  return {
+    key: kind,
+    label:
+      kind === "quickest"
+        ? "Quickest"
+        : kind === "calm"
+          ? "Least Crowded"
+          : "Optimum",
+
+    accent: visual.accent,
+    accentSoft: visual.accentSoft,
+    Icon: visual.Icon,
+
+    legs: [
+      {
+        type: "bus",
+        route: route.route_name,
+        label: route.route_name,
+        mins: route.eta_minutes,
+        stops: 0,
+        crowd,
+      },
+    ],
+
+    mins: totalMinutes,
+    fare: 0,
+
+    arrive: arrive.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+
+    transfers: route.transfers,
+
+    crowdScore:
+      crowd === "low"
+        ? 1
+        : crowd === "medium"
+          ? 2
+          : 3,
+
+    routeId: route.route_id,
+    delayMinutes: route.delay_minutes,
+    reliability: route.reliability,
+    crowdLevel: route.crowd_level,
+    reason: route.reason,
+  };
+}
+
+function adaptRecommendationResponse(data) {
+  const allRoutes = [
+    data.recommended_route,
+    ...(data.alternatives || []),
+  ].filter(Boolean);
+
+  if (!allRoutes.length) {
+    throw new Error("Backend returned no routes");
+  }
+
+  // Fastest route
+  const quickest = [...allRoutes].sort(
+    (a, b) => a.eta_minutes - b.eta_minutes
+  )[0];
+
+  // Prefer a different route for Least Crowded when possible.
+  const differentRoutes = allRoutes.filter(
+    (route) => route.route_id !== quickest.route_id
+  );
+
+  const calmPool = differentRoutes.length
+    ? differentRoutes
+    : allRoutes;
+
+  const calm = [...calmPool].sort(
+    (a, b) => a.crowd_score - b.crowd_score
+  )[0];
+
+  // Backend's overall recommendation
+  let optimum = data.recommended_route;
+
+  // If optimum is identical to both other categories and alternatives
+  // exist, keep backend recommendation as the authoritative ML pick.
+  if (
+    !optimum &&
+    allRoutes.length
+  ) {
+    optimum = allRoutes[0];
+  }
+
+  return {
+    quickest: backendRouteToFrontendRoute(quickest, "quickest"),
+    calm: backendRouteToFrontendRoute(calm, "calm"),
+    optimum: backendRouteToFrontendRoute(optimum, "optimum"),
+    metadata: data.metadata,
+  };
+}
+
 function buildRoutes(from, to) {
   const rand = seededRandom((from || "a") + (to || "b"));
   const pick = (arr) => arr[Math.floor(rand() * arr.length)];
@@ -702,9 +826,37 @@ export default function TransitApp() {
   const [routes, setRoutes] = useState(null);
   const [activeKey, setActiveKey] = useState("optimum");
 
-  const handleFindRoutes = () => {
-    setRoutes(buildRoutes(from, to));
-    setScreen("results");
+  const handleFindRoutes = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/recommend", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from,
+          to,
+          departure_time: new Date().toTimeString().slice(0, 5),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.detail ||
+          errorData.error ||
+          `Backend request failed (${response.status})`
+        );
+      }
+
+      const data = await response.json();
+
+      setRoutes(adaptRecommendationResponse(data));
+      setScreen("results");
+    } catch (error) {
+      console.error("Failed to fetch recommendations:", error);
+      alert(error.message || "Could not connect to the backend.");
+    }
   };
 
   return (
