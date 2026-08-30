@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   ArrowLeftRight,
   ChevronLeft,
@@ -10,7 +10,6 @@ import {
   TrainFront,
   PersonStanding,
   IndianRupee,
-  Clock,
   MapPin,
   Circle,
   Radio,
@@ -239,7 +238,7 @@ function buildRoutes(from, to) {
 /* ------------------------------------------------------------------ */
 /*  SHARED BITS                                                        */
 /* ------------------------------------------------------------------ */
-function LiveBadge() {
+function LiveBadge({ online = true }) {
   return (
     <div
       style={{
@@ -269,21 +268,21 @@ function LiveBadge() {
 
 function ModeIcon({ type, size = 13, color }) {
   const style = { color: color || C.textDim };
-  if (type === "walk") return <PersonStanding size={size} style={style} />;
-  if (type === "metro") return <TrainFront size={size} style={style} />;
+  const t = (type || "").toLowerCase();
+  if (t === "walk") return <PersonStanding size={size} style={style} />;
+  if (t === "metro" || t === "train") return <TrainFront size={size} style={style} />;
   return <Bus size={size} style={style} />;
 }
 
-/* Signature element: compact "transit schematic" line diagram encoding
-   crowd density (segment color) and stop count (dot count) per leg. */
-function LineDiagram({ legs, accent }) {
-  const transitLegs = legs.filter((l) => l.type !== "walk");
+function LineDiagram({ legs = [], accent }) {
+  const transitLegs = legs.filter((l) => (l.mode || l.type || "").toLowerCase() !== "walk");
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 3, width: "100%", overflow: "hidden" }}>
       <Circle size={7} fill={C.textFaint} color={C.textFaint} />
       {transitLegs.map((leg, i) => {
-        const color = CROWD_COLOR[leg.crowd];
-        const dotCount = Math.min(5, Math.max(2, Math.round(leg.stops / 2)));
+        const crowdKey = (leg.crowd_estimate || leg.crowd || "MODERATE").toUpperCase();
+        const color = CROWD_COLOR[crowdKey] || C.amber;
+        const dotCount = Math.min(5, Math.max(2, Math.round((leg.num_stops || leg.stops || 4) / 2)));
         return (
           <React.Fragment key={i}>
             <div
@@ -298,17 +297,20 @@ function LineDiagram({ legs, accent }) {
                 alignItems: "center",
                 justifyContent: "space-evenly",
               }}
-              title={CROWD_LABEL[leg.crowd]}
+              title={CROWD_LABEL[crowdKey] || "Transit leg"}
             >
               {Array.from({ length: dotCount }).map((_, d) => (
-                <span key={d} style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(16,18,26,0.55)" }} />
+                <span
+                  key={d}
+                  style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(16,18,26,0.55)" }}
+                />
               ))}
             </div>
             <div
               style={{
-                width: 18,
-                height: 18,
-                minWidth: 18,
+                width: 20,
+                height: 20,
+                minWidth: 20,
                 borderRadius: "50%",
                 background: C.surface2,
                 border: `1.5px solid ${color}`,
@@ -317,7 +319,7 @@ function LineDiagram({ legs, accent }) {
                 justifyContent: "center",
               }}
             >
-              <ModeIcon type={leg.type} size={10} color={color} />
+              <ModeIcon type={leg.mode || leg.type} size={11} color={color} />
             </div>
           </React.Fragment>
         );
@@ -328,9 +330,10 @@ function LineDiagram({ legs, accent }) {
   );
 }
 
-function CrowdMeter({ level }) {
-  const color = CROWD_COLOR[level];
-  const activeCount = { low: 2, medium: 4, high: 6 }[level];
+function CrowdMeter({ level = "MODERATE" }) {
+  const lvl = level.toUpperCase();
+  const color = CROWD_COLOR[lvl] || C.amber;
+  const activeCount = { LOW: 2, MODERATE: 4, HIGH: 5, VERY_HIGH: 6 }[lvl] || 3;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "flex-end", gap: 2, height: 14 }}>
@@ -342,65 +345,14 @@ function CrowdMeter({ level }) {
               height: 4 + i * 1.6,
               borderRadius: 1,
               background: i < activeCount ? color : C.line,
-              animation: i < activeCount ? `barPulse 1.6s ease-in-out ${i * 0.12}s infinite` : "none",
             }}
           />
         ))}
       </div>
       <span style={{ fontSize: 12, color, fontFamily: "'Inter', sans-serif", fontWeight: 500 }}>
-        {CROWD_LABEL[level]}
+        {CROWD_LABEL[lvl] || "Moderate crowd"}
       </span>
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  STYLISED MAP (placeholder for Google Maps API)                     */
-/* ------------------------------------------------------------------ */
-function MapArt({ hasDestination }) {
-  return (
-    <svg viewBox="0 0 400 230" width="100%" height="100%" style={{ display: "block" }}>
-      <defs>
-        <linearGradient id="mapBg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#181B26" />
-          <stop offset="100%" stopColor="#12141C" />
-        </linearGradient>
-      </defs>
-      <rect width="400" height="230" fill="url(#mapBg)" />
-      {/* coastline blob nod to a coastal city */}
-      <path d="M0,190 C60,160 90,210 140,185 C190,160 210,205 260,190 L400,230 L0,230 Z" fill="#173038" opacity="0.55" />
-      {/* street grid */}
-      {[30, 90, 150, 210, 270, 330].map((x) => (
-        <line key={"v" + x} x1={x} y1="0" x2={x - 30} y2="230" stroke={C.line} strokeWidth="1" opacity="0.5" />
-      ))}
-      {[20, 60, 100, 140, 180].map((y) => (
-        <line key={"h" + y} x1="0" y1={y} x2="400" y2={y + 10} stroke={C.line} strokeWidth="1" opacity="0.4" />
-      ))}
-      {/* route path once destination chosen */}
-      {hasDestination && (
-        <path
-          d="M110,150 C150,120 190,150 230,110 C255,88 270,95 290,70"
-          fill="none"
-          stroke={C.violet}
-          strokeWidth="2.5"
-          strokeDasharray="1 9"
-          strokeLinecap="round"
-          style={{ animation: "dashMove 1.4s linear infinite" }}
-        />
-      )}
-      {/* origin pin */}
-      <g transform="translate(110,150)">
-        <circle r="14" fill={C.amber} opacity="0.18" style={{ animation: "pulseRing 2s ease-out infinite" }} />
-        <circle r="5" fill={C.amber} stroke={C.bg} strokeWidth="2" />
-      </g>
-      {/* destination pin */}
-      {hasDestination && (
-        <g transform="translate(290,70)">
-          <circle r="14" fill={C.violet} opacity="0.2" style={{ animation: "pulseRing 2s ease-out infinite" }} />
-          <path d="M0,-11 C6,-11 10,-7 10,-2 C10,4 0,11 0,11 C0,11 -10,4 -10,-2 C-10,-7 -6,-11 0,-11 Z" fill={C.violet} stroke={C.bg} strokeWidth="1.5" />
-        </g>
-      )}
-    </svg>
   );
 }
 
@@ -575,12 +527,13 @@ function PlanScreen({
         </div>
 
         {activeField && suggestions.length > 0 && (
-          <div style={{ marginTop: 8, background: C.surface2, borderRadius: 12, border: `1px solid ${C.line}`, overflow: "hidden" }}>
+          <div style={{ marginTop: 8, background: C.surface2, borderRadius: 12, border: `1px solid ${C.line}`, overflow: "hidden", zIndex: 10 }}>
             {suggestions.map((s) => (
               <div
                 key={s}
                 onClick={() => {
-                  activeField === "from" ? setFrom(s) : setTo(s);
+                  if (activeField === "from") setFrom(s);
+                  else setTo(s);
                   setActiveField(null);
                 }}
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", cursor: "pointer", borderBottom: `1px solid ${C.line}`, fontFamily: "'Inter', sans-serif", fontSize: 13.5, color: C.text }}
@@ -594,13 +547,32 @@ function PlanScreen({
           </div>
         )}
 
+        <div style={{ marginTop: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 12, color: C.textDim, fontFamily: "'IBM Plex Mono', monospace" }}>DEPARTURE TIME</span>
+          <input
+            type="time"
+            value={departureTime}
+            onChange={(e) => setDepartureTime(e.target.value)}
+            style={{
+              background: C.surface2,
+              border: `1px solid ${C.line}`,
+              color: C.text,
+              borderRadius: 8,
+              padding: "4px 8px",
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: 12.5,
+              outline: "none",
+            }}
+          />
+        </div>
+
         {!activeField && (
           <div style={{ marginTop: 14 }}>
             <div style={{ fontSize: 11, color: C.textFaint, fontFamily: "'IBM Plex Mono', monospace", letterSpacing: 0.6, marginBottom: 8 }}>
               DELHI STOPS & RECENT
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {recents.map((r) => (
+              {["Kashmere Gate", "Rajiv Chowk", "Hauz Khas", "Central Secretariat"].map((r) => (
                 <button
                   key={r}
                   onClick={() => setTo(r)}
@@ -610,6 +582,7 @@ function PlanScreen({
                     background: C.surface2,
                     border: `1px solid ${C.line}`,
                     color: C.textDim,
+                    fontSize: 12,
                     fontSize: 12,
                     fontFamily: "'Inter', sans-serif",
                     cursor: "pointer",
@@ -624,6 +597,7 @@ function PlanScreen({
 
         <button
           onClick={onFindRoutes}
+          disabled={!from || !to || loading}
           disabled={!from || !to || loading}
           style={{
             marginTop: 18,
@@ -679,9 +653,14 @@ function FieldRow({ icon, placeholder, value, onChange, onFocus, inputRef }) {
 /* ------------------------------------------------------------------ */
 /*  RESULTS SCREEN                                                     */
 /* ------------------------------------------------------------------ */
-function RouteCard({ route, onSelect }) {
-  const { Icon, accent, accentSoft, label, mins, arrive, fare, transfers, legs, crowdScore } = route;
-  const overallCrowd = crowdScore <= 1.4 ? "low" : crowdScore <= 2.2 ? "medium" : "high";
+function RouteCard({ option, isRecommended, onSelect }) {
+  const isOpt = isRecommended || option.route_type === "OPTIMUM";
+  const isQuick = option.route_type === "QUICKEST";
+  const accent = isOpt ? C.violet : isQuick ? C.amber : C.teal;
+  const accentSoft = isOpt ? C.violetSoft : isQuick ? C.amberSoft : C.tealSoft;
+  const Icon = isOpt ? Sparkles : isQuick ? Zap : Users;
+  const typeLabel = isOpt ? "OPTIMUM" : isQuick ? "QUICKEST" : "CALM";
+
   return (
     <button
       onClick={onSelect}
@@ -689,7 +668,7 @@ function RouteCard({ route, onSelect }) {
         textAlign: "left",
         width: "100%",
         background: C.surface,
-        border: `1px solid ${C.line}`,
+        border: `1px solid ${isOpt ? C.violet : C.line}`,
         borderRadius: 16,
         padding: "16px 16px 14px",
         cursor: "pointer",
@@ -708,41 +687,53 @@ function RouteCard({ route, onSelect }) {
               <Icon size={13} color={accent} />
             </div>
             <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 13, color: accent, letterSpacing: 0.3 }}>
-              {label.toUpperCase()}
+              {typeLabel}
             </span>
-            {route.key === "optimum" && (
-              <span style={{ fontSize: 9.5, fontFamily: "'IBM Plex Mono', monospace", color: C.textFaint, border: `1px solid ${C.line}`, borderRadius: 5, padding: "1px 5px" }}>
-                ML PICK
+            {isOpt && (
+              <span style={{ fontSize: 9.5, fontFamily: "'IBM Plex Mono', monospace", color: C.violet, border: `1px solid ${C.violet}55`, borderRadius: 5, padding: "1px 5px" }}>
+                ★ ML PICK
               </span>
             )}
           </div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 26, color: C.text }}>{mins}</span>
-            <span style={{ fontSize: 12.5, color: C.textDim, fontFamily: "'Inter', sans-serif" }}>min · arrive {arrive}</span>
+            <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 26, color: C.text }}>
+              {option.eta_minutes}
+            </span>
+            <span style={{ fontSize: 12.5, color: C.textDim, fontFamily: "'Inter', sans-serif" }}>
+              min · {option.route_name}
+            </span>
           </div>
         </div>
         <div style={{ textAlign: "right", fontFamily: "'IBM Plex Mono', monospace", fontSize: 11.5, color: C.textDim }}>
           <div style={{ display: "flex", alignItems: "center", gap: 3, justifyContent: "flex-end" }}>
-            <IndianRupee size={10} /> {fare}
+            <IndianRupee size={10} /> {option.fare}
           </div>
-          <div style={{ marginTop: 2 }}>{transfers} transfer{transfers !== 1 ? "s" : ""}</div>
+          <div style={{ marginTop: 2 }}>{option.transfers} transfer{option.transfers !== 1 ? "s" : ""}</div>
+          {option.delay_minutes > 0 && (
+            <div style={{ color: option.delay_minutes >= 6 ? C.coral : C.amber, fontSize: 10.5, marginTop: 2 }}>
+              +{option.delay_minutes}m delay risk
+            </div>
+          )}
         </div>
       </div>
 
-      <LineDiagram legs={legs} accent={accent} />
+      <LineDiagram legs={option.legs} accent={accent} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
-        <CrowdMeter level={overallCrowd} />
-        <span style={{ fontSize: 12, color: C.textFaint, fontFamily: "'Inter', sans-serif" }}>Details \u203a</span>
+        <CrowdMeter level={option.crowd_level} />
+        <span style={{ fontSize: 11.5, color: C.textFaint, fontFamily: "'Inter', sans-serif" }}>Details ›</span>
       </div>
     </button>
   );
 }
 
-function ResultsScreen({ from, to, routes, onBack, onSelect }) {
+function ResultsScreen({ from, to, recommendData, onBack, onSelect }) {
+  const { recommended_route, alternatives, metadata } = recommendData;
+  const allRoutes = [recommended_route, ...(alternatives || [])];
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <TopBar onBack={onBack} title="Route options" subtitle={`${from} \u2192 ${to}`} />
+      <TopBar onBack={onBack} title="ML Route Options" subtitle={`${from} → ${to}`} />
       <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto", flex: 1 }}>
         <RouteCard route={routes.optimum} onSelect={() => onSelect("optimum")} />
         <RouteCard route={routes.quickest} onSelect={() => onSelect("quickest")} />
@@ -771,47 +762,33 @@ function ResultsScreen({ from, to, routes, onBack, onSelect }) {
 /* ------------------------------------------------------------------ */
 /*  DETAIL SCREEN                                                      */
 /* ------------------------------------------------------------------ */
-function DetailScreen({ routes, activeKey, setActiveKey, onBack, from, to }) {
-  const route = routes[activeKey];
-  const tabs = ["optimum", "quickest", "calm"];
+function DetailScreen({ route, onBack, from, to }) {
+  const accent = route.route_type === "OPTIMUM" ? C.violet : route.route_type === "QUICKEST" ? C.amber : C.teal;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <TopBar onBack={onBack} title={route.label} subtitle={`${from} \u2192 ${to}`} accent={route.accent} />
-
-      <div style={{ display: "flex", gap: 8, padding: "12px 16px 4px" }}>
-        {tabs.map((k) => {
-          const r = routes[k];
-          const activeTab = k === activeKey;
-          return (
-            <button
-              key={k}
-              onClick={() => setActiveKey(k)}
-              style={{
-                flex: 1,
-                padding: "8px 4px",
-                borderRadius: 10,
-                border: `1px solid ${activeTab ? r.accent : C.line}`,
-                background: activeTab ? r.accentSoft : "transparent",
-                color: activeTab ? r.accent : C.textFaint,
-                fontFamily: "'Inter', sans-serif",
-                fontSize: 11.5,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {r.label}
-            </button>
-          );
-        })}
-      </div>
+      <TopBar onBack={onBack} title={route.route_name} subtitle={`${from} → ${to}`} accent={accent} />
 
       <div style={{ padding: "16px", flex: 1, overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
-          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 30, color: C.text }}>{route.mins} min</span>
+          <span style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 30, color: C.text }}>
+            {route.eta_minutes} min
+          </span>
+          <span style={{ color: C.textDim, fontSize: 13 }}>
+            ({route.distance_km ? `${route.distance_km} km` : "estimated"})
+          </span>
         </div>
-        <div style={{ fontSize: 12.5, color: C.textDim, fontFamily: "'Inter', sans-serif", marginBottom: 22 }}>
-          Arrive {route.arrive} \u00b7 {route.transfers} transfer{route.transfers !== 1 ? "s" : ""} \u00b7 \u20b9{route.fare}
+        <div style={{ fontSize: 12.5, color: C.textDim, fontFamily: "'Inter', sans-serif", marginBottom: 16 }}>
+          {route.transfers} transfer{route.transfers !== 1 ? "s" : ""} · ₹{route.fare} · {Math.round(route.reliability * 100)}% reliability
+        </div>
+
+        <div style={{ background: C.surface2, borderRadius: 10, padding: "10px 12px", border: `1px solid ${C.line}`, marginBottom: 20 }}>
+          <div style={{ fontSize: 11, color: accent, fontFamily: "'IBM Plex Mono', monospace", fontWeight: 600 }}>
+            ML PREDICTION EXPLANATION
+          </div>
+          <p style={{ fontSize: 12.5, color: C.text, margin: "4px 0 0", lineHeight: 1.4 }}>
+            {route.reason}
+          </p>
         </div>
 
         <div style={{ position: "relative" }}>
@@ -823,44 +800,39 @@ function DetailScreen({ routes, activeKey, setActiveKey, onBack, from, to }) {
                     width: 30,
                     height: 30,
                     borderRadius: "50%",
-                    background: leg.type === "walk" ? C.surface2 : `${route.accent}22`,
-                    border: `1.5px solid ${leg.type === "walk" ? C.line : route.accent}`,
+                    background: (leg.mode || "").toLowerCase() === "walk" ? C.surface2 : `${accent}22`,
+                    border: `1.5px solid ${(leg.mode || "").toLowerCase() === "walk" ? C.line : accent}`,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     flexShrink: 0,
                   }}
                 >
-                  <ModeIcon type={leg.type} size={14} color={leg.type === "walk" ? C.textDim : route.accent} />
+                  <ModeIcon type={leg.mode} size={14} color={(leg.mode || "").toLowerCase() === "walk" ? C.textDim : accent} />
                 </div>
                 {i < route.legs.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 30, background: C.line, marginTop: 2 }} />}
               </div>
-              <div style={{ paddingBottom: 22, flex: 1 }}>
+              <div style={{ paddingBottom: 20, flex: 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <div style={{ fontFamily: "'Inter', sans-serif", fontSize: 13.5, color: C.text, fontWeight: 500 }}>
-                      {leg.type !== "walk" && (
-                        <span style={{ color: route.accent, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, marginRight: 6 }}>
-                          {leg.route}
+                      {(leg.mode || "").toLowerCase() !== "walk" && (
+                        <span style={{ color: accent, fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, marginRight: 6 }}>
+                          {leg.line}
                         </span>
                       )}
-                      {leg.label}
+                      {leg.from_stop} → {leg.to_stop}
                     </div>
-                    {leg.type !== "walk" && (
-                      <div style={{ fontSize: 11.5, color: C.textFaint, marginTop: 2, fontFamily: "'Inter', sans-serif" }}>
-                        {leg.stops} stops
+                    {(leg.mode || "").toLowerCase() !== "walk" && leg.num_stops > 0 && (
+                      <div style={{ fontSize: 11.5, color: C.textFaint, marginTop: 2 }}>
+                        {leg.num_stops} intermediate stops
                       </div>
                     )}
                   </div>
-                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: C.textDim, whiteSpace: "nowrap" }}>
-                    {leg.mins} min
+                  <div style={{ fontFamily: "'IBM Plex Mono', monospace", fontSize: 12, color: C.textDim }}>
+                    {leg.travel_minutes} min
                   </div>
                 </div>
-                {leg.type !== "walk" && (
-                  <div style={{ marginTop: 8 }}>
-                    <CrowdMeter level={leg.crowd} />
-                  </div>
-                )}
               </div>
             </div>
           ))}
@@ -874,7 +846,7 @@ function DetailScreen({ routes, activeKey, setActiveKey, onBack, from, to }) {
             padding: "15px 0",
             borderRadius: 14,
             border: "none",
-            background: route.accent,
+            background: accent,
             color: "#12141C",
             fontFamily: "'Space Grotesk', sans-serif",
             fontWeight: 700,
@@ -882,7 +854,7 @@ function DetailScreen({ routes, activeKey, setActiveKey, onBack, from, to }) {
             cursor: "pointer",
           }}
         >
-          Start trip
+          Start Journey
         </button>
       </div>
     </div>
@@ -910,7 +882,7 @@ function TopBar({ onBack, title, subtitle, accent }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  APP SHELL                                                          */
+/*  MAIN APP CONTAINER                                                 */
 /* ------------------------------------------------------------------ */
 export default function TransitApp() {
   const [screen, setScreen] = useState("plan"); // plan | results | detail
@@ -979,7 +951,7 @@ export default function TransitApp() {
     <div
       style={{
         width: "100%",
-        minHeight: 620,
+        minHeight: 640,
         maxWidth: 420,
         margin: "0 auto",
         background: C.bg,
@@ -990,7 +962,7 @@ export default function TransitApp() {
         fontFamily: "'Inter', sans-serif",
         display: "flex",
         flexDirection: "column",
-        height: 660,
+        height: 680,
       }}
     >
       <style>{`
@@ -1001,20 +973,13 @@ export default function TransitApp() {
           0% { transform: scale(0.6); opacity: 0.9; }
           100% { transform: scale(2.2); opacity: 0; }
         }
-        @keyframes barPulse {
-          0%, 100% { opacity: 0.55; }
-          50% { opacity: 1; }
-        }
-        @keyframes dashMove {
-          to { stroke-dashoffset: -20; }
-        }
-        @keyframes fadeSlide {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
         }
       `}</style>
 
-      <div key={screen} style={{ flex: 1, minHeight: 0, animation: "fadeSlide 0.35s ease" }}>
+      <div key={screen} style={{ flex: 1, minHeight: 0 }}>
         {screen === "plan" && (
           <PlanScreen
             from={from}
@@ -1028,23 +993,21 @@ export default function TransitApp() {
             setIsMapExpanded={setIsMapExpanded}
           />
         )}
-        {screen === "results" && routes && (
+        {screen === "results" && recommendData && (
           <ResultsScreen
             from={from}
             to={to}
-            routes={routes}
+            recommendData={recommendData}
             onBack={() => setScreen("plan")}
-            onSelect={(key) => {
-              setActiveKey(key);
+            onSelect={(route) => {
+              setSelectedRoute(route);
               setScreen("detail");
             }}
           />
         )}
-        {screen === "detail" && routes && (
+        {screen === "detail" && selectedRoute && (
           <DetailScreen
-            routes={routes}
-            activeKey={activeKey}
-            setActiveKey={setActiveKey}
+            route={selectedRoute}
             onBack={() => setScreen("results")}
             from={from}
             to={to}
